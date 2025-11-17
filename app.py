@@ -18,13 +18,13 @@ def load_and_prepare_data(uploaded_file):
     try:
         df = pd.read_csv(uploaded_file)
         
-        required_cols = ['date', 'platform', 'campaign_id', 'creative_id', 
+        required_cols = ['date', 'platform', 'campaign_name', 'creative_name', 
                         'impressions', 'clicks', 'spend']
         missing_cols = [col for col in required_cols if col not in df.columns]
         
         if missing_cols:
             st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
-            st.info("Required columns: date, platform, campaign_id, creative_id, impressions, clicks, spend")
+            st.info("Required columns: date, platform, campaign_name, creative_name, impressions, clicks, spend")
             return None
         
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
@@ -70,12 +70,12 @@ def load_and_prepare_data(uploaded_file):
         if 'revenue' in df.columns:
             df['ROAS'] = np.where(df['spend'] > 0, df['revenue'] / df['spend'], 0)
         
-        df = df.sort_values(['creative_id', 'date'])
+        df = df.sort_values(['creative_name', 'date'])
         
-        creative_first_dates = df.groupby('creative_id')['date'].transform('min')
+        creative_first_dates = df.groupby('creative_name')['date'].transform('min')
         df['age_in_days'] = (df['date'] - creative_first_dates).dt.days
         
-        df['cumulative_impressions'] = df.groupby('creative_id')['impressions'].cumsum()
+        df['cumulative_impressions'] = df.groupby('creative_name')['impressions'].cumsum()
         
         return df
     
@@ -101,25 +101,25 @@ def apply_global_filters(df, filters):
         filtered_df = filtered_df[filtered_df['platform'].isin(filters['platforms'])]
     
     if filters['campaigns']:
-        filtered_df = filtered_df[filtered_df['campaign_id'].isin(filters['campaigns'])]
+        filtered_df = filtered_df[filtered_df['campaign_name'].isin(filters['campaigns'])]
     
     agg_dict = {'impressions': 'sum'}
     if 'conversions' in filtered_df.columns:
         agg_dict['conversions'] = 'sum'
     
-    creative_totals = filtered_df.groupby('creative_id').agg(agg_dict).reset_index()
+    creative_totals = filtered_df.groupby('creative_name').agg(agg_dict).reset_index()
     
     valid_creatives = creative_totals[
         creative_totals['impressions'] >= filters['min_impressions']
-    ]['creative_id']
+    ]['creative_name']
     
     if 'conversions' in filtered_df.columns and filters['min_conversions'] > 0:
         valid_creatives_conv = creative_totals[
             creative_totals['conversions'] >= filters['min_conversions']
-        ]['creative_id']
+        ]['creative_name']
         valid_creatives = set(valid_creatives) & set(valid_creatives_conv)
     
-    filtered_df = filtered_df[filtered_df['creative_id'].isin(valid_creatives)]
+    filtered_df = filtered_df[filtered_df['creative_name'].isin(valid_creatives)]
     
     return filtered_df
 
@@ -134,7 +134,7 @@ def compute_aggregated_creative_metrics(df):
         'clicks': 'sum',
         'spend': 'sum',
         'platform': 'first',
-        'campaign_id': 'first',
+        'campaign_name': 'first',
         'age_in_days': 'max',
         'date': 'nunique'
     }
@@ -160,13 +160,7 @@ def compute_aggregated_creative_metrics(df):
     if 'format' in df.columns:
         agg_dict['format'] = 'first'
     
-    if 'creative_name' in df.columns:
-        agg_dict['creative_name'] = 'first'
-    
-    if 'campaign_name' in df.columns:
-        agg_dict['campaign_name'] = 'first'
-    
-    creative_metrics = df.groupby('creative_id').agg(agg_dict).reset_index()
+    creative_metrics = df.groupby('creative_name').agg(agg_dict).reset_index()
     
     creative_metrics.rename(columns={
         'age_in_days': 'age_in_days_max',
@@ -288,11 +282,11 @@ def build_leaderboard(creative_metrics):
     return leaderboard
 
 
-def compute_fatigue_metrics_for_creative(df, creative_id):
+def compute_fatigue_metrics_for_creative(df, creative_name):
     """
     Compute fatigue metrics for a specific creative.
     """
-    creative_data = df[df['creative_id'] == creative_id].copy()
+    creative_data = df[df['creative_name'] == creative_name].copy()
     creative_data = creative_data.sort_values('date')
     
     return creative_data
@@ -343,7 +337,7 @@ def fit_simple_adjusted_model(df, outcome_metric):
     model_df['residual'] = y - predictions
     model_df['adjusted_score'] = model_df['residual']
     
-    results = model_df[['creative_id', 'platform', 'campaign_id', outcome_metric, 
+    results = model_df[['creative_name', 'platform', 'campaign_name', outcome_metric, 
                        'predicted', 'adjusted_score', 'impressions', 'spend']].copy()
     results = results.sort_values('adjusted_score', ascending=False)
     
@@ -375,15 +369,13 @@ def show_welcome_screen():
     **Required columns:**
     - `date` - Date of the performance data
     - `platform` - Advertising platform (e.g., Meta, Google, TikTok)
-    - `campaign_id` - Campaign identifier
-    - `creative_id` - Unique creative identifier
+    - `campaign_name` - Campaign name
+    - `creative_name` - Creative name
     - `impressions` - Number of impressions
     - `clicks` - Number of clicks
     - `spend` - Ad spend
     
     **Optional columns:**
-    - `creative_name` - Human-readable creative name
-    - `campaign_name` - Human-readable campaign name
     - `purchases` - Number of purchases
     - `add_to_carts` - Number of add-to-cart events
     - `view_content` - Number of content view events
@@ -466,7 +458,7 @@ def main():
         default=all_platforms
     )
     
-    all_campaigns = sorted(df['campaign_id'].unique().tolist())
+    all_campaigns = sorted(df['campaign_name'].unique().tolist())
     selected_campaigns = st.sidebar.multiselect(
         "Campaign",
         options=all_campaigns,
@@ -871,15 +863,7 @@ def main():
         
         st.subheader(f"Top Performing Creatives ({len(leaderboard)} total)")
         
-        display_cols = ['creative_id']
-        
-        if 'creative_name' in leaderboard.columns:
-            display_cols.append('creative_name')
-        
-        display_cols.extend(['platform', 'campaign_id'])
-        
-        if 'campaign_name' in leaderboard.columns:
-            display_cols.append('campaign_name')
+        display_cols = ['creative_name', 'platform', 'campaign_name']
         
         if 'format' in leaderboard.columns:
             display_cols.append('format')
@@ -968,7 +952,7 @@ def main():
             y=y_axis_metric,
             size='spend',
             color='score',
-            hover_data=['creative_id', 'campaign_id', 'platform', 'impressions', 'clicks'],
+            hover_data=['creative_name', 'campaign_name', 'platform', 'impressions', 'clicks'],
             title=f"Creative Performance: {y_axis_metric} vs CPC (size = spend)",
             labels={'CPC': 'Cost Per Click ($)', y_axis_metric: y_axis_metric},
             color_continuous_scale='RdYlGn'
@@ -978,7 +962,7 @@ def main():
     with tab3:
         st.header("📉 Creative Detail & Fatigue Analysis")
         
-        creative_list = sorted(filtered_df['creative_id'].unique().tolist())
+        creative_list = sorted(filtered_df['creative_name'].unique().tolist())
         
         if len(creative_list) == 0:
             st.warning("No creatives available with current filters.")
@@ -992,7 +976,7 @@ def main():
         
         creative_data = compute_fatigue_metrics_for_creative(filtered_df, selected_creative)
         creative_summary = compute_aggregated_creative_metrics(
-            filtered_df[filtered_df['creative_id'] == selected_creative]
+            filtered_df[filtered_df['creative_name'] == selected_creative]
         ).iloc[0]
         
         st.markdown("---")
@@ -1003,7 +987,7 @@ def main():
         with col1:
             st.metric("Platform", creative_summary['platform'])
         with col2:
-            st.metric("Campaign", creative_summary['campaign_id'])
+            st.metric("Campaign", creative_summary['campaign_name'])
         with col3:
             st.metric("Total Spend", f"${creative_summary['spend']:,.2f}")
         with col4:
@@ -1213,12 +1197,12 @@ def main():
                     
                     fig = px.bar(
                         chart_data,
-                        x='creative_id',
+                        x='creative_name',
                         y='adjusted_score',
                         color='platform',
                         title=f"Top 15 Creatives by Adjusted {model_outcome} Score",
-                        labels={'creative_id': 'Creative ID', 'adjusted_score': 'Adjusted Score'},
-                        hover_data=['campaign_id', 'platform']
+                        labels={'creative_name': 'Creative Name', 'adjusted_score': 'Adjusted Score'},
+                        hover_data=['campaign_name', 'platform']
                     )
                     fig.update_xaxis(tickangle=-45)
                     st.plotly_chart(fig, use_container_width=True)

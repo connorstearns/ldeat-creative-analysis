@@ -408,20 +408,28 @@ def main():
     st.sidebar.markdown("---")
     
     with st.sidebar.expander("📥 Download CSV Template"):
-        st.markdown("""
-        Download the template to see the expected CSV format with all required and optional columns.
-        """)
-        
-        with open('creative_performance_template.csv', 'rb') as f:
-            template_data = f.read()
-        
-        st.download_button(
-            label="⬇️ Download Template",
-            data=template_data,
-            file_name="creative_performance_template.csv",
-            mime="text/csv",
-            help="Download a sample CSV file showing the expected format"
-        )
+    st.markdown("""
+    Download the template to see the expected CSV format with all required and optional columns.
+    """)
+
+    template_cols = [
+        "date", "platform", "campaign_id", "creative_id",
+        "impressions", "clicks", "spend",
+        "creative_name", "campaign_name",
+        "purchases", "add_to_carts", "view_content", "page_views",
+        "conversions", "revenue", "placement", "format"
+    ]
+
+    template_df = pd.DataFrame(columns=template_cols)
+    csv_data = template_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        label="⬇️ Download Template",
+        data=csv_data,
+        file_name="creative_performance_template.csv",
+        mime="text/csv",
+        help="Download a sample CSV file showing the expected format",
+    )
     
     st.sidebar.markdown("---")
     

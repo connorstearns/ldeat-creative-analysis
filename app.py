@@ -141,6 +141,11 @@ def apply_global_filters(df, filters):
     if 'objective_type' in filtered_df.columns and filters.get('objective_type') not in (None, 'All'):
         filtered_df = filtered_df[filtered_df['objective_type'] == filters['objective_type']]
     
+    if filters.get('topics') is not None and 'topic' in df.columns:
+        all_topics_in_data = set(df['topic'].dropna().unique())
+        if set(filters['topics']) != all_topics_in_data:
+            filtered_df = filtered_df[filtered_df['topic'].isin(filters['topics'])]
+    
     agg_dict = {'impressions': 'sum'}
     if 'conversions' in filtered_df.columns:
         agg_dict['conversions'] = 'sum'
@@ -203,6 +208,9 @@ def compute_aggregated_creative_metrics(df):
     
     if 'objective_type' in df.columns:
         agg_dict['objective_type'] = 'first'
+    
+    if 'topic' in df.columns:
+        agg_dict['topic'] = 'first'
     
     creative_metrics = df.groupby('creative_name').agg(agg_dict).reset_index()
     
@@ -528,6 +536,18 @@ def main():
             index=0
         )
     
+    selected_topics = None
+    if 'topic' in df.columns:
+        all_topics = sorted([t for t in df['topic'].dropna().unique().tolist()])
+        if len(all_topics) > 0:
+            selected_topics = st.sidebar.multiselect(
+                "Topic",
+                options=all_topics,
+                default=all_topics
+            )
+        else:
+            st.sidebar.info("ℹ️ No topics found in data. Add a 'topic' column to enable topic filtering.")
+    
     min_impressions = st.sidebar.slider(
         "Min Impressions per Creative",
         min_value=0,
@@ -594,6 +614,7 @@ def main():
         'campaigns': selected_campaigns if selected_campaigns else all_campaigns,
         'objectives': selected_objectives if selected_objectives else None,
         'objective_type': selected_objective_type,
+        'topics': selected_topics if selected_topics else None,
         'min_impressions': min_impressions,
         'min_conversions': min_conversions
     }
@@ -610,7 +631,7 @@ def main():
         "📊 Overview",
         "🏆 Creative Leaderboard",
         "📉 Creative Detail & Fatigue",
-        "🤖 Model & Insights"
+        "🏷️ Topic Insights"
     ])
     
     with tab1:
@@ -909,6 +930,7 @@ def main():
             )
             if selected_kpi in RATE_METRICS:
                 fig.update_yaxes(tickformat=".2%")
+                fig.update_coloraxes(colorbar_tickformat=".2%")
             st.plotly_chart(fig, use_container_width=True)
         
         with col2:
@@ -935,6 +957,9 @@ def main():
         st.subheader(f"Top Performing Creatives ({len(leaderboard)} total)")
         
         display_cols = ['creative_name', 'platform', 'campaign_name']
+        
+        if 'topic' in leaderboard.columns:
+            display_cols.append('topic')
         
         if 'objective' in leaderboard.columns:
             display_cols.append('objective')
@@ -966,54 +991,67 @@ def main():
         
         display_df = leaderboard[display_cols].copy()
         
-        display_df['CTR'] = display_df['CTR'].apply(lambda x: f"{x:.3%}")
-        display_df['CPC'] = display_df['CPC'].apply(lambda x: f"${x:.2f}")
-        display_df['CPM'] = display_df['CPM'].apply(lambda x: f"${x:.2f}")
+        display_df['CTR'] = display_df['CTR'] * 100
+        if 'CVR' in display_df.columns:
+            display_df['CVR'] = display_df['CVR'] * 100
+        if 'purchase_rate' in display_df.columns:
+            display_df['purchase_rate'] = display_df['purchase_rate'] * 100
+        if 'add_to_cart_rate' in display_df.columns:
+            display_df['add_to_cart_rate'] = display_df['add_to_cart_rate'] * 100
+        if 'view_content_rate' in display_df.columns:
+            display_df['view_content_rate'] = display_df['view_content_rate'] * 100
+        if 'page_view_rate' in display_df.columns:
+            display_df['page_view_rate'] = display_df['page_view_rate'] * 100
+        
+        column_config = {
+            'CTR': st.column_config.NumberColumn('CTR', format="%.3f %%"),
+            'CPC': st.column_config.NumberColumn('CPC', format="$ %.2f"),
+            'CPM': st.column_config.NumberColumn('CPM', format="$ %.2f"),
+            'score': st.column_config.NumberColumn('Score', format="%.3f"),
+            'impressions': st.column_config.NumberColumn('Impressions', format="%,d"),
+            'clicks': st.column_config.NumberColumn('Clicks', format="%,d"),
+            'spend': st.column_config.NumberColumn('Spend', format="$ %,.2f"),
+        }
         
         if 'CVR' in display_df.columns:
-            display_df['CVR'] = display_df['CVR'].apply(lambda x: f"{x:.3%}")
+            column_config['CVR'] = st.column_config.NumberColumn('CVR', format="%.3f %%")
         if 'CPA' in display_df.columns:
-            display_df['CPA'] = display_df['CPA'].apply(lambda x: f"${x:.2f}")
+            column_config['CPA'] = st.column_config.NumberColumn('CPA', format="$ %.2f")
         if 'ROAS' in display_df.columns:
-            display_df['ROAS'] = display_df['ROAS'].apply(lambda x: f"{x:.2f}x")
-        
-        display_df['score'] = display_df['score'].apply(lambda x: f"{x:.3f}")
-        display_df['impressions'] = display_df['impressions'].apply(lambda x: f"{x:,.0f}")
-        display_df['clicks'] = display_df['clicks'].apply(lambda x: f"{x:,.0f}")
-        display_df['spend'] = display_df['spend'].apply(lambda x: f"${x:,.2f}")
+            column_config['ROAS'] = st.column_config.NumberColumn('ROAS', format="%.2f x")
         
         if 'conversions' in display_df.columns:
-            display_df['conversions'] = display_df['conversions'].apply(lambda x: f"{x:,.0f}")
+            column_config['conversions'] = st.column_config.NumberColumn('Conversions', format="%,d")
         
         if 'purchases' in display_df.columns:
-            display_df['purchases'] = display_df['purchases'].apply(lambda x: f"{x:,.0f}")
+            column_config['purchases'] = st.column_config.NumberColumn('Purchases', format="%,d")
         if 'purchase_rate' in display_df.columns:
-            display_df['purchase_rate'] = display_df['purchase_rate'].apply(lambda x: f"{x:.3%}")
+            column_config['purchase_rate'] = st.column_config.NumberColumn('Purchase Rate', format="%.3f %%")
         if 'cost_per_purchase' in display_df.columns:
-            display_df['cost_per_purchase'] = display_df['cost_per_purchase'].apply(lambda x: f"${x:.2f}")
+            column_config['cost_per_purchase'] = st.column_config.NumberColumn('Cost/Purchase', format="$ %.2f")
         
         if 'add_to_carts' in display_df.columns:
-            display_df['add_to_carts'] = display_df['add_to_carts'].apply(lambda x: f"{x:,.0f}")
+            column_config['add_to_carts'] = st.column_config.NumberColumn('Add to Carts', format="%,d")
         if 'add_to_cart_rate' in display_df.columns:
-            display_df['add_to_cart_rate'] = display_df['add_to_cart_rate'].apply(lambda x: f"{x:.3%}")
+            column_config['add_to_cart_rate'] = st.column_config.NumberColumn('Add to Cart Rate', format="%.3f %%")
         if 'cost_per_add_to_cart' in display_df.columns:
-            display_df['cost_per_add_to_cart'] = display_df['cost_per_add_to_cart'].apply(lambda x: f"${x:.2f}")
+            column_config['cost_per_add_to_cart'] = st.column_config.NumberColumn('Cost/Add to Cart', format="$ %.2f")
         
         if 'view_content' in display_df.columns:
-            display_df['view_content'] = display_df['view_content'].apply(lambda x: f"{x:,.0f}")
+            column_config['view_content'] = st.column_config.NumberColumn('View Content', format="%,d")
         if 'view_content_rate' in display_df.columns:
-            display_df['view_content_rate'] = display_df['view_content_rate'].apply(lambda x: f"{x:.3%}")
+            column_config['view_content_rate'] = st.column_config.NumberColumn('View Content Rate', format="%.3f %%")
         if 'cost_per_view_content' in display_df.columns:
-            display_df['cost_per_view_content'] = display_df['cost_per_view_content'].apply(lambda x: f"${x:.2f}")
+            column_config['cost_per_view_content'] = st.column_config.NumberColumn('Cost/View Content', format="$ %.2f")
         
         if 'page_views' in display_df.columns:
-            display_df['page_views'] = display_df['page_views'].apply(lambda x: f"{x:,.0f}")
+            column_config['page_views'] = st.column_config.NumberColumn('Page Views', format="%,d")
         if 'page_view_rate' in display_df.columns:
-            display_df['page_view_rate'] = display_df['page_view_rate'].apply(lambda x: f"{x:.3%}")
+            column_config['page_view_rate'] = st.column_config.NumberColumn('Page View Rate', format="%.3f %%")
         if 'cost_per_page_view' in display_df.columns:
-            display_df['cost_per_page_view'] = display_df['cost_per_page_view'].apply(lambda x: f"${x:.2f}")
+            column_config['cost_per_page_view'] = st.column_config.NumberColumn('Cost/Page View', format="$ %.2f")
         
-        st.dataframe(display_df, use_container_width=True, height=400)
+        st.dataframe(display_df, use_container_width=True, height=400, column_config=column_config)
         
         st.markdown("---")
         st.subheader("Creative Performance Scatter Plot")
@@ -1232,102 +1270,152 @@ def main():
             st.warning("Not enough data points for cumulative impression analysis.")
     
     with tab4:
-        st.header("🤖 Model & Insights")
+        st.header("🏷️ Topic Insights")
         
-        st.info("💡 This model adjusts for context (platform, format, scale) to identify creatives that over- or under-perform relative to their expected performance.")
+        creative_metrics = compute_aggregated_creative_metrics(filtered_df)
         
-        model_outcome_options = ['CTR']
+        if 'topic' not in creative_metrics.columns or creative_metrics['topic'].isna().all():
+            st.warning("⚠️ No topic data available. Add a 'topic' column to your CSV to enable topic-based analysis.")
+            st.info("💡 **Tip:** Topics help you group creatives by theme or content type (e.g., 'Product Demo', 'UGC Content', 'Brand Messaging').")
+            return
+        
+        st.info("💡 Analyze creative performance by topic to identify which content themes drive the best results.")
+        
+        st.markdown("---")
+        st.subheader("CTR vs CPC Performance by Topic")
+        
+        plot_data = creative_metrics[creative_metrics['topic'].notna()].copy()
+        
+        if len(plot_data) == 0:
+            st.warning("No data available with topics after filtering.")
+        else:
+            fig = px.scatter(
+                plot_data,
+                x='CPC',
+                y='CTR',
+                size='spend',
+                color='topic',
+                hover_data=['creative_name', 'platform', 'impressions', 'clicks'],
+                title="Creative Performance: CTR vs CPC by Topic (bubble size = spend)",
+                labels={'CPC': 'Cost Per Click ($)', 'CTR': 'Click-Through Rate', 'topic': 'Topic'},
+                color_discrete_sequence=px.colors.qualitative.Set2
+            )
+            fig.update_yaxes(tickformat=".2%")
+            fig.update_layout(hovermode='closest', height=500)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("---")
+        st.subheader("Topic Performance Summary")
+        
+        topic_agg_dict = {
+            'impressions': 'sum',
+            'clicks': 'sum',
+            'spend': 'sum',
+            'creative_name': 'nunique'
+        }
+        
         if has_conversions:
-            model_outcome_options.append('CVR')
-        if 'purchases' in df.columns:
-            model_outcome_options.append('purchase_rate')
-        if 'add_to_carts' in df.columns:
-            model_outcome_options.append('add_to_cart_rate')
-        if 'view_content' in df.columns:
-            model_outcome_options.append('view_content_rate')
-        if 'page_views' in df.columns:
-            model_outcome_options.append('page_view_rate')
+            topic_agg_dict['conversions'] = 'sum'
         
-        model_outcome = st.selectbox(
-            "Select Outcome Metric to Model",
-            options=model_outcome_options,
-            index=0
+        topic_metrics = filtered_df[filtered_df['topic'].notna()].groupby('topic').agg(topic_agg_dict).reset_index()
+        topic_metrics.rename(columns={'creative_name': 'num_creatives'}, inplace=True)
+        
+        topic_metrics['CTR'] = np.where(
+            topic_metrics['impressions'] > 0,
+            topic_metrics['clicks'] / topic_metrics['impressions'],
+            0
+        )
+        topic_metrics['CPC'] = np.where(
+            topic_metrics['clicks'] > 0,
+            topic_metrics['spend'] / topic_metrics['clicks'],
+            0
         )
         
-        if st.button("Run Context-Adjusted Model"):
-            with st.spinner("Fitting model..."):
-                results, error = fit_simple_adjusted_model(filtered_df, model_outcome)
-                
-                if error:
-                    st.error(f"❌ {error}")
-                else:
-                    st.success(f"✅ Model fitted successfully on {len(results)} creatives")
-                    
-                    st.markdown("---")
-                    st.subheader("Top Over-Performing Creatives (Adjusted)")
-                    
-                    top_n = min(20, len(results))
-                    top_results = results.head(top_n).copy()
-                    
-                    if model_outcome in RATE_METRICS:
-                        top_results[model_outcome] = top_results[model_outcome].apply(lambda x: f"{x:.3%}")
-                        top_results['predicted'] = top_results['predicted'].apply(lambda x: f"{x:.3%}")
-                    else:
-                        top_results[model_outcome] = top_results[model_outcome].apply(lambda x: f"{x:.4f}")
-                        top_results['predicted'] = top_results['predicted'].apply(lambda x: f"{x:.4f}")
-                    top_results['adjusted_score'] = top_results['adjusted_score'].apply(lambda x: f"{x:.4f}")
-                    top_results['impressions'] = top_results['impressions'].apply(lambda x: f"{x:,.0f}")
-                    top_results['spend'] = top_results['spend'].apply(lambda x: f"${x:,.2f}")
-                    
-                    st.dataframe(top_results, use_container_width=True, height=400)
-                    
-                    st.markdown("---")
-                    st.subheader("Adjusted Performance Chart")
-                    
-                    chart_data = results.head(15).copy()
-                    
-                    fig = px.bar(
-                        chart_data,
-                        x='creative_name',
-                        y='adjusted_score',
-                        color='platform',
-                        title=f"Top 15 Creatives by Adjusted {model_outcome} Score",
-                        labels={'creative_name': 'Creative Name', 'adjusted_score': 'Adjusted Score'},
-                        hover_data=['campaign_name', 'platform']
-                    )
-                    fig.update_xaxes(tickangle=-45)
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    st.markdown("---")
-                    st.subheader("Natural Language Insights")
-                    
-                    top_10 = results.head(10)
-                    platform_counts = top_10['platform'].value_counts()
-                    
-                    insights = []
-                    
-                    if len(platform_counts) > 0:
-                        top_platform = platform_counts.index[0]
-                        top_platform_count = platform_counts.iloc[0]
-                        if top_platform_count >= 5:
-                            insights.append(f"• **{top_platform}** dominates the top performers with {top_platform_count} creatives in the top 10.")
-                        else:
-                            insights.append(f"• Performance is relatively balanced across platforms.")
-                    
-                    if 'format' in results.columns:
-                        format_counts = top_10['format'].value_counts()
-                        if len(format_counts) > 0:
-                            top_format = format_counts.index[0]
-                            top_format_count = format_counts.iloc[0]
-                            if top_format_count >= 5:
-                                insights.append(f"• **{top_format}** format is over-represented in top performers ({top_format_count}/10).")
-                    
-                    avg_adjusted = results['adjusted_score'].mean()
-                    top_10_avg = top_10['adjusted_score'].mean()
-                    insights.append(f"• Top 10 creatives have an average adjusted score of {top_10_avg:.4f} vs overall average of {avg_adjusted:.4f}.")
-                    
-                    for insight in insights:
-                        st.markdown(insight)
+        if has_conversions:
+            topic_metrics['CVR'] = np.where(
+                topic_metrics['clicks'] > 0,
+                topic_metrics['conversions'] / topic_metrics['clicks'],
+                0
+            )
+            topic_metrics['CPA'] = np.where(
+                topic_metrics['conversions'] > 0,
+                topic_metrics['spend'] / topic_metrics['conversions'],
+                0
+            )
+        
+        topic_metrics = topic_metrics.sort_values('CTR', ascending=False)
+        
+        topic_metrics['CTR'] = topic_metrics['CTR'] * 100
+        if 'CVR' in topic_metrics.columns:
+            topic_metrics['CVR'] = topic_metrics['CVR'] * 100
+        
+        topic_column_config = {
+            'topic': st.column_config.TextColumn('Topic'),
+            'num_creatives': st.column_config.NumberColumn('# Creatives', format="%d"),
+            'impressions': st.column_config.NumberColumn('Impressions', format="%,d"),
+            'clicks': st.column_config.NumberColumn('Clicks', format="%,d"),
+            'spend': st.column_config.NumberColumn('Spend', format="$ %,.2f"),
+            'CTR': st.column_config.NumberColumn('CTR', format="%.3f %%"),
+            'CPC': st.column_config.NumberColumn('CPC', format="$ %.2f"),
+        }
+        
+        if 'CVR' in topic_metrics.columns:
+            topic_column_config['CVR'] = st.column_config.NumberColumn('CVR', format="%.3f %%")
+            topic_column_config['conversions'] = st.column_config.NumberColumn('Conversions', format="%,d")
+            topic_column_config['CPA'] = st.column_config.NumberColumn('CPA', format="$ %.2f")
+        
+        st.dataframe(topic_metrics, use_container_width=True, height=400, column_config=topic_column_config)
+        
+        st.markdown("---")
+        st.subheader("📊 Key Topic Insights")
+        
+        if len(topic_metrics) >= 1:
+            top_topic = topic_metrics.iloc[0]
+            bottom_topic = topic_metrics.iloc[-1]
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.success(f"**🏆 Best Performing Topic**")
+                st.write(f"**{top_topic['topic']}**")
+                st.write(f"- CTR: **{top_topic['CTR']:.3f}%**")
+                st.write(f"- CPC: **${top_topic['CPC']:.2f}**")
+                st.write(f"- {int(top_topic['num_creatives'])} creatives")
+                st.write(f"- ${top_topic['spend']:,.0f} total spend")
+            
+            with col2:
+                st.error(f"**⚠️ Lowest Performing Topic**")
+                st.write(f"**{bottom_topic['topic']}**")
+                st.write(f"- CTR: **{bottom_topic['CTR']:.3f}%**")
+                st.write(f"- CPC: **${bottom_topic['CPC']:.2f}**")
+                st.write(f"- {int(bottom_topic['num_creatives'])} creatives")
+                st.write(f"- ${bottom_topic['spend']:,.0f} total spend")
+            
+            st.markdown("---")
+            
+            insights = []
+            
+            ctr_range = topic_metrics['CTR'].max() - topic_metrics['CTR'].min()
+            if ctr_range > 2.0:
+                insights.append(f"• **High CTR variance** across topics ({ctr_range:.2f}% spread) - some topics significantly outperform others")
+            
+            high_spend_topics = topic_metrics.nlargest(3, 'spend')
+            high_ctr_topics = topic_metrics.nlargest(3, 'CTR')
+            
+            overlap = set(high_spend_topics['topic']) & set(high_ctr_topics['topic'])
+            if len(overlap) > 0:
+                insights.append(f"• **Efficient spend allocation** - High-spend topics ({', '.join(overlap)}) also have high CTR")
+            else:
+                insights.append(f"• **Opportunity for reallocation** - Your highest-spend topics aren't your best performers")
+            
+            avg_ctr = topic_metrics['CTR'].mean()
+            above_avg_count = len(topic_metrics[topic_metrics['CTR'] > avg_ctr])
+            insights.append(f"• {above_avg_count}/{len(topic_metrics)} topics perform above average CTR ({avg_ctr:.2f}%)")
+            
+            if len(insights) > 0:
+                st.markdown("**Summary:**")
+                for insight in insights:
+                    st.markdown(insight)
 
 
 if __name__ == "__main__":

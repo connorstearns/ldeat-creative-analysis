@@ -9,6 +9,31 @@ from sklearn.preprocessing import LabelEncoder
 import warnings
 warnings.filterwarnings('ignore')
 
+# 🔐 ADD THIS
+def check_password():
+    """Simple password check using Streamlit secrets."""
+    def password_entered():
+        """Checks whether the password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
+            st.session_state["authenticated"] = True
+            del st.session_state["password"]  # don't store the password
+        else:
+            st.session_state["authenticated"] = False
+
+    # First run: show input
+    if "authenticated" not in st.session_state:
+        st.text_input("Password", type="password", key="password", on_change=password_entered)
+        st.stop()
+
+    # If not authenticated, show input again
+    if not st.session_state["authenticated"]:
+        st.text_input("Password", type="password", key="password", on_change=password_entered)
+        st.error("Incorrect password")
+        st.stop()
+
+    # If we get here, the user is authenticated
+    return True
+
 
 RATE_METRICS = [
     "CTR",
@@ -447,6 +472,9 @@ def main():
         page_icon="📊",
         layout="wide"
     )
+    
+    # 🔐 Gate the whole app behind the password
+    check_password()
     
     st.sidebar.title("📊 Creative Analytics")
     st.sidebar.markdown("---")

@@ -9,7 +9,7 @@ from sklearn.preprocessing import LabelEncoder
 import warnings
 warnings.filterwarnings('ignore')
 
-# 🔐 ADD THIS
+# 🔐 PASSWORD PROTECTION
 def check_password():
     """Simple password check using Streamlit secrets."""
     def password_entered():
@@ -34,6 +34,12 @@ def check_password():
     # If we get here, the user is authenticated
     return True
 
+# GOOGLE SHEET LINKING
+def sheet_to_csv_url(sheet_url: str) -> str:
+    if "/edit#gid=" in sheet_url:
+        base, gid = sheet_url.split("/edit#gid=")
+        return f"{base}/export?format=csv&gid={gid}"
+    return sheet_url
 
 RATE_METRICS = [
     "CTR",
@@ -1126,23 +1132,19 @@ def main():
 
     st.sidebar.markdown("---")
 
-    # File upload stays in the sidebar, but *not* in the expander
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload Creative Performance CSV",
-        type=["csv"],
-        help="Upload a CSV file with creative performance data",
-    )
-
-    if uploaded_file is None:
-        show_welcome_screen()
-        st.stop()
-
-    df = load_and_prepare_data(uploaded_file)
+    # --- LOAD GOOGLE SHEET INSTEAD OF CSV ---
+    sheet_url = st.secrets["google"]["sheet_url"]
+    csv_url = sheet_to_csv_url(sheet_url)
+    
+    df = load_and_prepare_data(csv_url)
+    
     if df is None:
+        st.error("⚠️ Could not load Google Sheet data")
         st.stop()
-        
-    st.sidebar.success(f"✅ Loaded {len(df):,} rows")
+    
+    st.sidebar.success(f"📡 Loaded live data ({len(df):,} rows)")
     st.sidebar.markdown("---")
+
 
     st.sidebar.subheader("🔍 Filters")
 

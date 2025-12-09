@@ -45,44 +45,43 @@ SCOPES = [
 ]
 
 def load_google_sheet_to_df():
+    sa = st.secrets["gcp_service_account"]
     sheet_url = st.secrets["google"]["sheet_url"]
 
-    # --- sanity check secrets shape ---
-    sa = st.secrets["gcp_service_account"]
-    st.write("Secrets debug:", {
-        "type": str(type(sa)),
-        "keys": list(sa.keys()),
-        "client_email": sa.get("client_email", "MISSING"),
-        "has_private_key": "private_key" in sa,
-        "has_token_uri": "token_uri" in sa,
-    })
+    creds = Credentials.from_service_account_info(sa).with_scopes(SCOPES)
+    gc = gspread.authorize(creds)
 
-    try:
-        # Build creds from dict
-        creds = Credentials.from_service_account_info(sa).with_scopes(SCOPES)
-        gc = gspread.authorize(creds)
+    sh = gc.open_by_url(sheet_url)
+    ws = sh.sheet1        # or sh.worksheet("Creative Data")
 
-        sh = gc.open_by_url(sheet_url)
-        ws = sh.sheet1
-        data = ws.get_all_records()
-        df = pd.DataFrame(data)
-        return df
+    # Get raw values (no header validation)
+    values = ws.get_all_values()
+    if not values:
+        return pd.DataFrame()
 
-    except Exception as e:
-        st.error(f"Error loading Google Sheet: {repr(e)}")
+    raw_header = values[0]
+    rows = values[1:]
 
-        # Try to print any response body Google sent (often contains JSON with error reason)
-        try:
-            # gspread / googleapiclient sometimes attach .response
-            resp = getattr(e, "response", None)
-            if resp is not None and hasattr(resp, "text"):
-                st.code(resp.text, language="json")
-        except Exception:
-            pass
+    # Clean header: make blanks + duplicates unique
+    cleaned_header = []
+    seen = {}
 
-        # Minimal non-sensitive debug
-        st.write("Service account email:", sa.get("client_email", "MISSING"))
-        raise
+    for i, h in enumerate(raw_header):
+        col = (h or "").strip()
+        if col == "":
+            col = f"col_{i+1}"      # give a name to blank columns
+
+        # de-duplicate
+        if col in seen:
+            seen[col] += 1
+            col = f"{col}_{seen[col]}"
+        else:
+            seen[col] = 1
+
+        cleaned_header.append(col)
+
+    df = pd.DataFrame(rows, columns=cleaned_header)
+    return df
 
 def sheet_to_csv_url(sheet_url: str) -> str:
     if "/edit#gid=" in sheet_url:

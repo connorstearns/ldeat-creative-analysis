@@ -1863,7 +1863,7 @@ with st.sidebar.expander("📥 Download CSV Template"):
         creative_list = sorted(filtered_df['creative_name'].unique().tolist())
         if len(creative_list) == 0:
             st.warning("No creatives available with current filters.")
-            return
+            st.stop()
 
         # default to last selected creative if available
         default_index = 0

@@ -56,12 +56,6 @@ def load_google_sheet_to_df():
     data = ws.get_all_records()
     return pd.DataFrame(data)
 
-def sheet_to_csv_url(sheet_url: str) -> str:
-    if "/edit#gid=" in sheet_url:
-        base, gid = sheet_url.split("/edit#gid=")
-        return f"{base}/export?format=csv&gid={gid}"
-    return sheet_url
-
 RATE_METRICS = [
     "CTR",
     "CVR",
@@ -203,7 +197,7 @@ def classify_journey_role(
     return "Engagement"
 
 
-def load_and_prepare_data(uploaded_file):
+def load_and_prepare_data(df_raw: pd.DataFrame):
     """
     Load CSV file and prepare data with derived metrics.
     Supports the Lazy Dog schema and maps it into the app's internal columns.
@@ -1153,19 +1147,15 @@ def main():
 
     st.sidebar.markdown("---")
 
-    # --- LOAD GOOGLE SHEET INSTEAD OF CSV ---
-    sheet_url = st.secrets["google"]["sheet_url"]
-    csv_url = sheet_to_csv_url(sheet_url)
-    
+    # --- LOAD GOOGLE SHEET USING SERVICE ACCOUNT ---
     try:
-        # load the raw CSV from Google Sheets
-        raw_df = pd.read_csv(csv_url)
+        raw_df = load_google_sheet_to_df()
     except Exception as e:
-        st.error(f"❌ Error loading Google Sheet: {e}")
+        st.error(f"❌ Error loading Google Sheet via service account: {e}")
         st.stop()
-
-    # now run all your renaming + metric calculations
+    
     df = load_and_prepare_data(raw_df)
+
 
     if df is None:
         st.error("⚠️ Could not prepare data from Google Sheet")

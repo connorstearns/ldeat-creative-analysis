@@ -1537,7 +1537,7 @@ def main():
 
             st.dataframe(
                 display_topics[cols_for_display],
-                use_container_width=True,
+                width="stretch",
                 column_config=topic_col_config,
             )
 
@@ -1722,7 +1722,7 @@ def main():
                 color_continuous_scale="RdYlGn",
             )
             fig_pf.update_xaxes(tickformat=".1%")
-            st.plotly_chart(fig_pf, use_container_width=True)
+            st.plotly_chart(fig_pf, width="stretch")
     # ---------- END PLATFORM COMPARISON ----------
 
     # ---------- CREATIVE LEADERBOARD TAB ----------
@@ -1855,7 +1855,7 @@ def main():
         )
         st.session_state['selected_creative'] = selected_from_leaderboard
 
-        st.dataframe(display_df, use_container_width=True, height=400, column_config=column_config)
+        st.dataframe(display_df, width="stretch", height=400, column_config=column_config)
 
         csv_leaderboard = display_df.to_csv(index=False).encode("utf-8")
         st.download_button(
@@ -1881,7 +1881,7 @@ def main():
             labels={'CPC': 'Cost Per Click ($)', y_axis_metric: y_axis_metric},
             color_continuous_scale='RdYlGn'
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         # ---------- END PLATFORM COMPARISON ----------
 
@@ -2073,7 +2073,7 @@ def main():
                         yaxis2=dict(fig.layout.yaxis2, tickformat=".2%")
                     )
 
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
                 rate_metrics = ['CTR', 'CVR', 'purchase_rate', 'add_to_cart_rate', 'view_content_rate', 'page_view_rate']
                 fatigue_threshold = -0.0001 if fatigue_kpi in rate_metrics else 0.01
@@ -2138,7 +2138,7 @@ def main():
             if fatigue_kpi in RATE_METRICS:
                 fig.update_yaxes(tickformat=".2%")
 
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             st.warning("Not enough data points for cumulative impression analysis.")
 
@@ -2178,7 +2178,7 @@ def main():
             )
             fig.update_yaxes(tickformat=".2%")
             fig.update_layout(hovermode='closest', height=500)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         st.markdown("---")
         st.subheader("📊 Spend by Topic & Journey Role")
@@ -2205,7 +2205,7 @@ def main():
                 barmode='stack'
             )
             fig_stacked.update_layout(xaxis_tickangle=-45)
-            st.plotly_chart(fig_stacked, use_container_width=True)
+            st.plotly_chart(fig_stacked, width="stretch")
             
             st.markdown("---")
             st.subheader("🎯 Topic Performance by Layer")
@@ -2226,7 +2226,7 @@ def main():
                     eng_by_topic.rename(columns={'creative_name': 'num_creatives'}, inplace=True)
                     eng_by_topic = eng_by_topic.sort_values('CTR', ascending=False)
                     eng_by_topic['CTR'] = eng_by_topic['CTR'] * 100
-                    st.dataframe(eng_by_topic, use_container_width=True, column_config={
+                    st.dataframe(eng_by_topic, width="stretch", column_config={
                         'CTR': st.column_config.NumberColumn('Avg CTR', format="%.3f %%"),
                         'CPC': st.column_config.NumberColumn('Avg CPC', format="$ %.2f"),
                         'spend': st.column_config.NumberColumn('Spend', format="$ %,.0f"),
@@ -2250,7 +2250,7 @@ def main():
                         if col in int_by_topic.columns:
                             int_by_topic[col] = int_by_topic[col] * 100
                             col_config[col] = st.column_config.NumberColumn(col.replace('_', ' ').title(), format="%.3f %%")
-                    st.dataframe(int_by_topic, use_container_width=True, column_config=col_config)
+                    st.dataframe(int_by_topic, width="stretch", column_config=col_config)
                 else:
                     st.info("No intent creatives with topics.")
             
@@ -2278,7 +2278,7 @@ def main():
                         col_config['ROAS'] = st.column_config.NumberColumn('Avg ROAS', format="%.2f x")
                     if 'conversions' in conv_by_topic.columns:
                         col_config['conversions'] = st.column_config.NumberColumn('Conversions', format="%,d")
-                    st.dataframe(conv_by_topic, use_container_width=True, column_config=col_config)
+                    st.dataframe(conv_by_topic, width="stretch", column_config=col_config)
                 else:
                     st.info("No conversion creatives with topics.")
         else:
@@ -2362,7 +2362,7 @@ def main():
 
         fig_q.update_yaxes(tickformat=".2%")
         fig_q.update_xaxes(tickformat=".1%")
-        st.plotly_chart(fig_q, use_container_width=True)
+        st.plotly_chart(fig_q, width="stretch")
 
 
         topic_metrics['CTR'] = topic_metrics['CTR'] * 100
@@ -2384,7 +2384,7 @@ def main():
             topic_column_config['conversions'] = st.column_config.NumberColumn('Conversions', format="%,d")
             topic_column_config['CPA'] = st.column_config.NumberColumn('CPA', format="$ %.2f")
 
-        st.dataframe(topic_metrics, use_container_width=True, height=400, column_config=topic_column_config)
+        st.dataframe(topic_metrics, width="stretch", height=400, column_config=topic_column_config)
 
         csv_topics = topic_metrics.to_csv(index=False).encode("utf-8")
         st.download_button(

@@ -1126,7 +1126,7 @@ with st.sidebar.expander("📥 Download CSV Template"):
 
     if uploaded_file is None:
         show_welcome_screen()
-        return
+        st.stop()
 
     df = load_and_prepare_data(uploaded_file)
 

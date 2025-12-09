@@ -1114,6 +1114,10 @@ def main():
     page_icon="lazy-dog-restaurant-favicon.png", 
     layout="wide"
 )
+    # 👇 RUN PASSWORD CHECK HERE!
+    if not check_password():
+        st.stop()
+        
     st.sidebar.title("📊 Creative Analytics")
     st.sidebar.markdown("---")
 

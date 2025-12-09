@@ -1,10 +1,4 @@
 import streamlit as st
-from PIL import Image  # if you want to load it as an image file
-st.set_page_config(
-    page_title="Lazy Dog Creative Performance",
-    page_icon="lazy-dog-restaurant-favicon.png", 
-    layout="wide"
-)
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -1094,59 +1088,49 @@ def show_welcome_screen():
 
 
 def main():
+    st.set_page_config(
+    page_title="Lazy Dog Creative Performance",
+    page_icon="lazy-dog-restaurant-favicon.png", 
+    layout="wide"
+)
     st.sidebar.title("📊 Creative Analytics")
     st.sidebar.markdown("---")
 
-with st.sidebar.expander("📥 Download CSV Template"):
-    st.markdown("""
-    Download a sample CSV showing the expected column names and structure for Lazy Dog.
-    """)
+    # ⬇️ Only the template download UI lives in the expander
+    with st.sidebar.expander("📥 Download CSV Template"):
+        st.markdown("""
+        Download a sample CSV showing the expected column names and structure for Lazy Dog.
+        """)
 
-    # Mirror the revised Lazy Dog schema
-    template_columns = [
-        "Date",
-        "Week Start",
-        "Period",
-        "Fiscal Year",
-        "Channel",
-        "Campaign",
-        "Campaign Type",
-        "Content Topic",
-        "Ad name",
-        "Creative Size",
-        "Spend",
-        "Impressions",
-        "Clicks",
-        "Video Views",
-        "Video Completions",
-        "Online Order",
-        "Online Order Revenue",
-        "Store Traffic",
-        "Store Visit Revenue",
-        "Reservations",
-        "Content Views",
-        "Add To Carts",
-        "Page Views",
-    ]
+        template_columns = [
+            "Date", "Week Start", "Period", "Fiscal Year",
+            "Channel", "Campaign", "Campaign Type", "Content Topic",
+            "Ad name", "Creative Size", "Spend", "Impressions", "Clicks",
+            "Video Views", "Video Completions", "Online Order",
+            "Online Order Revenue", "Store Traffic", "Store Visit Revenue",
+            "Reservations", "Content Views", "Add To Carts", "Page Views",
+        ]
 
-    # One empty row just so people see the structure
-    template_df = pd.DataFrame(columns=template_columns)
-    template_csv = template_df.to_csv(index=False).encode("utf-8")
+        template_df = pd.DataFrame(columns=template_columns)
+        template_csv = template_df.to_csv(index=False).encode("utf-8")
 
-    st.download_button(
-        label="⬇️ Download Template",
-        data=template_csv,
-        file_name="lazy_dog_creative_template.csv",
-        mime="text/csv",
-        help="Download a sample CSV file showing the expected format"
-    )
+        st.download_button(
+            label="⬇️ Download Template",
+            data=template_csv,
+            file_name="lazy_dog_creative_template.csv",
+            mime="text/csv",
+            help="Download a sample CSV file showing the expected format",
+        )
+
+    # 🔚 end expander
 
     st.sidebar.markdown("---")
 
+    # File upload stays in the sidebar, but *not* in the expander
     uploaded_file = st.sidebar.file_uploader(
         "Upload Creative Performance CSV",
-        type=['csv'],
-        help="Upload a CSV file with creative performance data"
+        type=["csv"],
+        help="Upload a CSV file with creative performance data",
     )
 
     if uploaded_file is None:
@@ -1154,10 +1138,9 @@ with st.sidebar.expander("📥 Download CSV Template"):
         st.stop()
 
     df = load_and_prepare_data(uploaded_file)
-
     if df is None:
         st.stop()
-
+        
     st.sidebar.success(f"✅ Loaded {len(df):,} rows")
     st.sidebar.markdown("---")
 

@@ -1171,15 +1171,21 @@ def main():
 
     st.sidebar.subheader("🔍 Filters")
 
-    min_date = df['date'].min()
-    max_date = df['date'].max()
+    # make sure we're using only valid dates
+    date_series = df["date"].dropna()
+    
+    # convert Timestamps -> datetime.date
+    min_date = date_series.min().date()
+    max_date = date_series.max().date()
+    
     date_range = st.sidebar.date_input(
         "Date Range",
         value=(min_date, max_date),
         min_value=min_date,
-        max_value=max_date
+        max_value=max_date,
     )
-
+    
+    # always end up with a (start, end) tuple of dates
     if isinstance(date_range, tuple) and len(date_range) == 2:
         date_range_filter = date_range
     else:

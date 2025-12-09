@@ -2124,7 +2124,7 @@ with st.sidebar.expander("📥 Download CSV Template"):
         if 'topic' not in creative_metrics.columns or creative_metrics['topic'].isna().all():
             st.warning("⚠️ No topic data available. Add a 'topic' column to your CSV to enable topic-based analysis.")
             st.info("💡 **Tip:** Topics help you group creatives by theme or content type (e.g., 'Product Demo', 'UGC Content', 'Brand Messaging').")
-            return
+            st.stop()
 
         st.info("💡 Analyze creative performance by topic to identify which content themes drive the best results.")
 

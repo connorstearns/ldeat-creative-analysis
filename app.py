@@ -199,7 +199,10 @@ def load_and_prepare_data(uploaded_file):
             "Content Topic": "topic",
             "Ad name": "creative_name",
             "Creative Size": "format",
-
+            "Impressions": "impressions",
+            "Clicks": "clicks",
+            "Spend": "spend",
+        
             # conversions & events
             "Online Order": "online_orders",
             "Online Order Revenue": "online_order_revenue",
@@ -947,6 +950,34 @@ def build_leaderboard(creative_metrics):
 
     return leaderboard
 
+def compute_topic_summary(creative_metrics, has_conversions):
+    if "topic" not in creative_metrics.columns:
+        return pd.DataFrame()
+    # simple aggregate to get you going
+    agg = {
+        "impressions": "sum",
+        "clicks": "sum",
+        "spend": "sum",
+        "creative_name": "nunique",
+    }
+    if "ROAS" in creative_metrics.columns:
+        agg["ROAS"] = "mean"
+    topic_df = creative_metrics.groupby("topic").agg(agg).reset_index()
+    topic_df.rename(columns={"creative_name": "num_creatives"}, inplace=True)
+    topic_df["CTR"] = np.where(
+        topic_df["impressions"] > 0,
+        topic_df["clicks"] / topic_df["impressions"],
+        0,
+    )
+    topic_df["CPC"] = np.where(
+        topic_df["clicks"] > 0,
+        topic_df["spend"] / topic_df["clicks"],
+        0,
+    )
+    # optionally total_revenue_est, ROAS, etc.
+    return topic_df
+
+
 def compute_fatigue_metrics_for_creative(df, creative_name):
     """
     Compute fatigue metrics for a specific creative.
@@ -1063,12 +1094,6 @@ def show_welcome_screen():
 
 
 def main():
-    st.set_page_config(
-        page_title="Creative Performance Analysis",
-        page_icon="📊",
-        layout="wide"
-    )
-
     st.sidebar.title("📊 Creative Analytics")
     st.sidebar.markdown("---")
 

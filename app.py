@@ -209,6 +209,9 @@ def load_and_prepare_data(df_raw: pd.DataFrame):
         # --- 1) Normalize column names from Lazy Dog template to app internals ---
         rename_map = {
             "Date": "date",
+            "Week Start": "week_start", 
+            "Period": "period",              
+            "Fiscal Year": "fiscal_year",   
             "Channel": "platform",
             "Campaign": "campaign_name",
             "Content Topic": "topic",
@@ -255,6 +258,9 @@ def load_and_prepare_data(df_raw: pd.DataFrame):
         if df["date"].isna().all():
             st.error("❌ Could not parse any dates in the 'date' column")
             return None
+        
+        if "week_start" in df.columns:
+            df["week_start"] = pd.to_datetime(df["week_start"], errors="coerce")
 
         # --- 4) Clean numeric columns ---
         numeric_cols = ["impressions", "clicks", "spend"]
@@ -1174,22 +1180,78 @@ def main():
     # make sure we're using only valid dates
     date_series = df["date"].dropna()
     
-    # convert Timestamps -> datetime.date
-    min_date = date_series.min().date()
-    max_date = date_series.max().date()
+    min_date = df["date"].min()
+    max_date = df["date"].max()
     
-    date_range = st.sidebar.date_input(
-        "Date Range",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
+    # --- QUICK DATE FILTERS ---
+    quick_choice = st.sidebar.radio(
+        "Quick Date Filter",
+        options=["Custom Range", "This Week", "Last Week", "This Period", "This Fiscal Year"],
+        index=0,
+        help="Use quick filters based on Week Start / Period / Fiscal Year, or choose a custom range."
     )
     
-    # always end up with a (start, end) tuple of dates
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        date_range_filter = date_range
-    else:
-        date_range_filter = (min_date, max_date)
+    start_date = min_date
+    end_date = max_date
+    
+    # Helper: unique week starts sorted
+    week_starts = None
+    if "week_start" in df.columns:
+        week_starts = sorted(df["week_start"].dropna().unique())
+    
+    if quick_choice == "Custom Range":
+        date_range = st.sidebar.date_input(
+            "Date Range",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
+        )
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_date, end_date = date_range
+        else:
+            start_date, end_date = (min_date, max_date)
+    
+    elif quick_choice == "This Week" and week_starts is not None and len(week_starts) >= 1:
+        this_week_start = week_starts[-1]
+        start_date = this_week_start
+        end_date = this_week_start + pd.Timedelta(days=6)
+        st.sidebar.info(f"Using week starting {start_date.date()}")
+    
+    elif quick_choice == "Last Week" and week_starts is not None and len(week_starts) >= 2:
+        last_week_start = week_starts[-2]
+        start_date = last_week_start
+        end_date = last_week_start + pd.Timedelta(days=6)
+        st.sidebar.info(f"Using week starting {start_date.date()}")
+    
+    elif quick_choice == "This Period" and "period" in df.columns:
+        # Take the period of the most recent date in the dataset
+        latest_row = df.sort_values("date").iloc[-1]
+        this_period = latest_row["period"]
+        period_mask = df["period"] == this_period
+        period_dates = df.loc[period_mask, "date"]
+        if not period_dates.empty:
+            start_date = period_dates.min()
+            end_date = period_dates.max()
+            st.sidebar.info(f"Using Period {this_period} ({start_date.date()} – {end_date.date()})")
+    
+    elif quick_choice == "This Fiscal Year" and "fiscal_year" in df.columns:
+        # Use the fiscal year of the most recent row
+        latest_row = df.sort_values("date").iloc[-1]
+        this_fy = latest_row["fiscal_year"]
+        fy_mask = df["fiscal_year"] == this_fy
+        fy_dates = df.loc[fy_mask, "date"]
+        if not fy_dates.empty:
+            start_date = fy_dates.min()
+            end_date = fy_dates.max()
+            st.sidebar.info(f"Using Fiscal Year {this_fy} ({start_date.date()} – {end_date.date()})")
+    
+    # Fallback guards in case something above failed
+    if pd.isna(start_date):
+        start_date = min_date
+    if pd.isna(end_date):
+        end_date = max_date
+    
+    date_range_filter = (start_date, end_date)
 
     all_platforms = sorted(df['platform'].unique().tolist())
     selected_platforms = st.sidebar.multiselect(

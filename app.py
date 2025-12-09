@@ -35,21 +35,25 @@ def check_password():
     return True
 
 # GOOGLE SHEET LINKING
-import gspread
 from google.oauth2.service_account import Credentials
+import gspread
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
 
 def load_google_sheet_to_df():
     sheet_url = st.secrets["google"]["sheet_url"]
+
     creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=[
-            "https://www.googleapis.com/auth/spreadsheets.readonly",
-            "https://www.googleapis.com/auth/drive.readonly"
-        ]
-    )
+        st.secrets["gcp_service_account"]
+    ).with_scopes(SCOPES)   # 👈 more reliable
+
     gc = gspread.authorize(creds)
+
     sh = gc.open_by_url(sheet_url)
-    ws = sh.sheet1             # or worksheet("Creative Data")
+    ws = sh.sheet1
     data = ws.get_all_records()
     return pd.DataFrame(data)
 

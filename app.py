@@ -35,6 +35,24 @@ def check_password():
     return True
 
 # GOOGLE SHEET LINKING
+import gspread
+from google.oauth2.service_account import Credentials
+
+def load_google_sheet_to_df():
+    sheet_url = st.secrets["google"]["sheet_url"]
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets.readonly",
+            "https://www.googleapis.com/auth/drive.readonly"
+        ]
+    )
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_url(sheet_url)
+    ws = sh.sheet1             # or worksheet("Creative Data")
+    data = ws.get_all_records()
+    return pd.DataFrame(data)
+
 def sheet_to_csv_url(sheet_url: str) -> str:
     if "/edit#gid=" in sheet_url:
         base, gid = sheet_url.split("/edit#gid=")
@@ -189,7 +207,7 @@ def load_and_prepare_data(uploaded_file):
     Returns processed dataframe or None if validation fails.
     """
     try:
-        df = pd.read_csv(uploaded_file)
+        df = df_raw.copy()
 
         # --- 1) Normalize column names from Lazy Dog template to app internals ---
         rename_map = {
@@ -1136,12 +1154,20 @@ def main():
     sheet_url = st.secrets["google"]["sheet_url"]
     csv_url = sheet_to_csv_url(sheet_url)
     
-    df = load_and_prepare_data(csv_url)
-    
-    if df is None:
-        st.error("⚠️ Could not load Google Sheet data")
+    try:
+        # load the raw CSV from Google Sheets
+        raw_df = pd.read_csv(csv_url)
+    except Exception as e:
+        st.error(f"❌ Error loading Google Sheet: {e}")
         st.stop()
-    
+
+    # now run all your renaming + metric calculations
+    df = load_and_prepare_data(raw_df)
+
+    if df is None:
+        st.error("⚠️ Could not prepare data from Google Sheet")
+        st.stop()
+
     st.sidebar.success(f"📡 Loaded live data ({len(df):,} rows)")
     st.sidebar.markdown("---")
 

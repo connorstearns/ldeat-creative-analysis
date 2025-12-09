@@ -1294,7 +1294,7 @@ with st.sidebar.expander("📥 Download CSV Template"):
 
     if len(filtered_df) == 0:
         st.warning("⚠️ No data matches the current filters. Please adjust your filter settings.")
-        return
+        st.stop()
 
     st.sidebar.info(f"📊 {len(filtered_df):,} rows after filtering")
 

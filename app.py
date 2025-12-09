@@ -1131,7 +1131,7 @@ with st.sidebar.expander("📥 Download CSV Template"):
     df = load_and_prepare_data(uploaded_file)
 
     if df is None:
-        return
+        st.stop()
 
     st.sidebar.success(f"✅ Loaded {len(df):,} rows")
     st.sidebar.markdown("---")

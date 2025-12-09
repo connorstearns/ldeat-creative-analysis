@@ -1,4 +1,10 @@
 import streamlit as st
+from PIL import Image  # if you want to load it as an image file
+st.set_page_config(
+    page_title="Lazy Dog Creative Performance",
+    page_icon="lazy-dog-restaurant-favicon.png", 
+    layout="wide"
+)
 import pandas as pd
 import numpy as np
 import plotly.express as px

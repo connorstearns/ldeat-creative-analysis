@@ -52,36 +52,9 @@ def load_google_sheet_to_df():
     gc = gspread.authorize(creds)
 
     sh = gc.open_by_url(sheet_url)
-    ws = sh.sheet1        # or sh.worksheet("Creative Data")
-
-    # Get raw values (no header validation)
-    values = ws.get_all_values()
-    if not values:
-        return pd.DataFrame()
-
-    raw_header = values[0]
-    rows = values[1:]
-
-    # Clean header: make blanks + duplicates unique
-    cleaned_header = []
-    seen = {}
-
-    for i, h in enumerate(raw_header):
-        col = (h or "").strip()
-        if col == "":
-            col = f"col_{i+1}"      # give a name to blank columns
-
-        # de-duplicate
-        if col in seen:
-            seen[col] += 1
-            col = f"{col}_{seen[col]}"
-        else:
-            seen[col] = 1
-
-        cleaned_header.append(col)
-
-    df = pd.DataFrame(rows, columns=cleaned_header)
-    return df
+    ws = sh.sheet1  # or sh.worksheet("Final Consolidated Raw Data")
+    data = ws.get_all_records()
+    return pd.DataFrame(data)
 
 def sheet_to_csv_url(sheet_url: str) -> str:
     if "/edit#gid=" in sheet_url:

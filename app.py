@@ -1156,34 +1156,34 @@ def main():
     
     # SET LOGO & TITLE
     logo_path = "lazy_dog_logo.png"  # file is in repo root
-        
+    
     with st.sidebar:
+        # tighten padding / spacing for *all* images in the sidebar (logo only, in our case)
         st.markdown("""
             <style>
-            section[data-testid="stSidebar"] .css-1d391kg {
-                padding-top: 0rem !important;
+            /* reduce default padding at top of sidebar content */
+            section[data-testid="stSidebar"] .block-container {
+                padding-top: 0.5rem !important;
             }
-            .sidebar-logo {
-                margin-top: 0px !important;
-                margin-bottom: 0px !important;
+            /* tweak first image in the sidebar (the logo) */
+            section[data-testid="stSidebar"] img {
+                margin-top: -10px !important;
+                margin-bottom: -10px !important;
             }
             </style>
         """, unsafe_allow_html=True)
     
-        st.markdown(
-            f"<img class='sidebar-logo' src='{logo_path}' width='240'>",
-            unsafe_allow_html=True
-        )
+        # let Streamlit actually serve the image
+        st.image(logo_path, use_column_width=True)
     
         st.markdown("""
-            <h2 style='margin-top: -10px; margin-bottom:10px; font-size:26px; font-weight:700;'>
+            <h2 style='margin-top:-5px; margin-bottom:10px; font-size:26px; font-weight:700;'>
                 Media Performance Tracker
             </h2>
         """, unsafe_allow_html=True)
     
         st.markdown("<hr style='margin-top:0px;'>", unsafe_allow_html=True)
-    
-    
+
         with st.sidebar.expander("🔗 View Source Data (Google Sheet)"):
             st.markdown("""
             View or download the live Lazy Dog creative tracking sheet directly in Google Sheets.  

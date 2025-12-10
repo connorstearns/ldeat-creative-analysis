@@ -500,7 +500,7 @@ def apply_global_filters(df, filters):
         filtered_df = filtered_df[filtered_df['campaign_name'].isin(filters['campaigns'])]
 
     if filters.get('business_objectives') is not None and 'business_objective' in filtered_df.columns:
-    all_biz_obj_in_data = set(df['business_objective'].dropna().unique())
+        all_biz_obj_in_data = set(df['business_objective'].dropna().unique())
     if set(filters['business_objectives']) != all_biz_obj_in_data:
         filtered_df = filtered_df[
             filtered_df['business_objective'].isin(filters['business_objectives'])

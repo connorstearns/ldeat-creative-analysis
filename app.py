@@ -525,7 +525,7 @@ def apply_global_filters(df, filters):
         filtered_df = filtered_df[filtered_df['objective_type'] == filters['objective_type']]
 
     if filters.get('campaign_types') is not None and 'campaign_type' in filtered_df.columns:
-    all_types_in_data = set(df['campaign_type'].dropna().unique())
+        all_types_in_data = set(df['campaign_type'].dropna().unique())
     if set(filters['campaign_types']) != all_types_in_data:
         filtered_df = filtered_df[
             filtered_df['campaign_type'].isin(filters['campaign_types'])

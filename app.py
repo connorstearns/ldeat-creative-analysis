@@ -1268,7 +1268,7 @@ def main():
             start_date = period_dates.min()
             end_date = period_dates.max()
             st.sidebar.info(
-                f"Using Period {current_period} in FY {current_fy} "
+                f"Using Period {current_period} in {current_fy} "
                 f"({start_date.date()} – {end_date.date()})"
             )
     
@@ -1289,7 +1289,7 @@ def main():
                 start_date = last_period_dates.min()
                 end_date = last_period_dates.max()
                 st.sidebar.info(
-                    f"Using Last Period {last_period} in FY {current_fy} "
+                    f"Using Last Period {last_period} in {current_fy} "
                     f"({start_date.date()} – {end_date.date()})"
                 )
     
@@ -1564,7 +1564,7 @@ def main():
             st.info("No platform data available after filters.")
         else:
             total_platform_spend = platform_metrics["spend"].sum()
-            cols = st.columns(min(3, len(platform_metrics)))
+            cols = st.columns(min(4, len(platform_metrics)))
 
             for idx, row in platform_metrics.iterrows():
                 col = cols[idx % len(cols)]
@@ -1773,7 +1773,7 @@ def main():
         else:
             total_spend_pf = platform_metrics["spend"].sum()
 
-            cols = st.columns(min(3, len(platform_metrics)))
+            cols = st.columns(min(4, len(platform_metrics)))
 
             for idx, row in platform_metrics.iterrows():
                 col = cols[idx % len(cols)]

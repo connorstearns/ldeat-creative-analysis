@@ -1158,42 +1158,48 @@ def main():
     logo_path = "lazy_dog_logo.png"  # file is in repo root
     
     with st.sidebar:
-        # tighten padding / spacing for *all* images in the sidebar (logo only, in our case)
-        st.markdown("""
+        # tighten vertical padding & image spacing
+        st.markdown(
+            """
             <style>
-            /* reduce default padding at top of sidebar content */
+            /* reduce top/bottom padding inside sidebar content */
             section[data-testid="stSidebar"] .block-container {
-                padding-top: 0.5rem !important;
+                padding-top: 0.25rem !important;
+                padding-bottom: 0.5rem !important;
             }
-            /* tweak first image in the sidebar (the logo) */
+    
+            /* tighten spacing around the first image in the sidebar (the logo) */
             section[data-testid="stSidebar"] img {
-                margin-top: -10px !important;
-                margin-bottom: -10px !important;
+                margin-top: -10px !important;   /* move logo up */
+                margin-bottom: -15px !important; /* reduce gap before title */
+                display: block;
+                margin-left: auto;
+                margin-right: auto;
             }
             </style>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
     
-        # let Streamlit actually serve the image
+        # let Streamlit serve the image
         st.image(logo_path, use_column_width=True)
     
-        st.markdown("""
-            <h2 style='margin-top:-5px; margin-bottom:10px; font-size:26px; font-weight:700;'>
+        # bigger, tighter title
+        st.markdown(
+            """
+            <h2 style="
+                margin-top: 0px;
+                margin-bottom: 12px;
+                font-size: 26px;
+                font-weight: 700;
+            ">
                 Media Performance Tracker
             </h2>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
     
-        st.markdown("<hr style='margin-top:0px;'>", unsafe_allow_html=True)
-
-        with st.sidebar.expander("🔗 View Source Data (Google Sheet)"):
-            st.markdown("""
-            View or download the live Lazy Dog creative tracking sheet directly in Google Sheets.  
-            """)
-        
-            st.markdown(
-                f"[👉 Open Google Sheet](https://docs.google.com/spreadsheets/d/1JcSaWPiavp2_XLV8OVPlxvg8fJGTmNQTZotDeJLXous/edit?gid=1029811642#gid=1029811642)"
-            )
-        
-            st.sidebar.markdown("---")
+        st.markdown("<hr style='margin-top: 0px; margin-bottom: 18px;'>", unsafe_allow_html=True)
 
     # --- LOAD GOOGLE SHEET USING SERVICE ACCOUNT ---
     try:

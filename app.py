@@ -1320,6 +1320,17 @@ def main():
         st.stop()
 
     st.sidebar.success(f"📡 Loaded live data ({len(df):,} rows)")
+    st.sidebar.markdown(
+    """
+    <small>
+    <a href="https://docs.google.com/spreadsheets/d/1JcSaWPiavp2_XLV8OVPlxvg8fJGTmNQTZotDeJLXous/edit?gid=1029811642" target="_blank">
+    🔗 Open Live Google Sheet
+    </a>
+    </small>
+    """,
+    unsafe_allow_html=True,
+    )
+
     st.sidebar.markdown("---")
 
 

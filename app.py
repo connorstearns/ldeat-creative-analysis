@@ -114,6 +114,30 @@ def classify_objective(objective: str) -> str:
         return "Conversion"
     return "Other"
 
+def classify_business_objective(campaign_name: str) -> str:
+    """
+    Derive a high-level campaign objective from the campaign name.
+    Looks for specific keywords in the campaign name string.
+    """
+    if not isinstance(campaign_name, str):
+        return "Other"
+
+    name = campaign_name.lower()
+
+    if "store visit" in name or "store-visit" in name:
+        return "Store Visit"
+    if "online order" in name or "olo" in name:
+        return "Online Order"
+    if "reservation" in name or "res" in name:
+        return "Reservation"
+    if "nro" in name:
+        return "NRO"
+    if "lto" in name:
+        return "LTO"
+    if "retention" in name:
+        return "Retention"
+
+    return "Other"
 
 import numpy as np
 
@@ -435,6 +459,8 @@ def load_and_prepare_data(df_raw: pd.DataFrame):
         # --- 7) Sort, age, cumulative impressions, objective classification ---
         df = df.sort_values(["creative_name", "date"])
 
+        df["business_objective"] = df["campaign_name"].apply(classify_business_objective)
+
         creative_first_dates = df.groupby("creative_name")["date"].transform("min")
         df["age_in_days"] = (df["date"] - creative_first_dates).dt.days
 
@@ -448,6 +474,10 @@ def load_and_prepare_data(df_raw: pd.DataFrame):
     except Exception as e:
         st.error(f"❌ Error loading file: {str(e)}")
         return None
+
+
+
+
 
 
 def apply_global_filters(df, filters):
@@ -468,6 +498,13 @@ def apply_global_filters(df, filters):
 
     if filters['campaigns']:
         filtered_df = filtered_df[filtered_df['campaign_name'].isin(filters['campaigns'])]
+
+    if filters.get('business_objectives') is not None and 'business_objective' in filtered_df.columns:
+    all_biz_obj_in_data = set(df['business_objective'].dropna().unique())
+    if set(filters['business_objectives']) != all_biz_obj_in_data:
+        filtered_df = filtered_df[
+            filtered_df['business_objective'].isin(filters['business_objectives'])
+        ]
 
     if filters.get('objectives') is not None:
         all_objectives_in_data = set(df['objective'].dropna().unique())
@@ -569,6 +606,8 @@ def compute_aggregated_creative_metrics(df):
     if "reservations" in df.columns:
         agg_dict["reservations"] = "sum"
 
+    if 'business_objective' in df.columns:
+        agg_dict['business_objective'] = 'first'
 
     creative_metrics = df.groupby('creative_name').agg(agg_dict).reset_index()
 
@@ -1369,6 +1408,20 @@ def main():
         default=all_campaigns
     )
 
+    # NEW: Business Objective filter
+    selected_business_objectives = None
+    if "business_objective" in df.columns:
+        all_business_objectives = sorted(
+            [o for o in df["business_objective"].dropna().unique().tolist()]
+        )
+        if all_business_objectives:
+            selected_business_objectives = st.sidebar.multiselect(
+                "Business Objective",
+                options=all_business_objectives,
+                default=all_business_objectives,
+                help="Derived from campaign names (Store Visit, Online Order, Reservation, NRO, LTO, Retention, Other)."
+            )
+
     selected_objectives = None
     selected_objective_type = "All"
 
@@ -1484,11 +1537,12 @@ def main():
         'date_range': date_range_filter,
         'platforms': selected_platforms if selected_platforms else all_platforms,
         'campaigns': selected_campaigns if selected_campaigns else all_campaigns,
+        'business_objectives': selected_business_objectives if selected_business_objectives else None, 
         'objectives': selected_objectives if selected_objectives else None,
         'objective_type': selected_objective_type,
         'topics': selected_topics if selected_topics else None,
-        'formats': selected_formats if selected_formats else None,       # NEW
-        'placements': selected_placements if selected_placements else None,  # NEW
+        'formats': selected_formats if selected_formats else None,
+        'placements': selected_placements if selected_placements else None, 
         'min_impressions': min_impressions,
         'min_conversions': min_conversions
     }

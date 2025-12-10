@@ -63,7 +63,16 @@ RATE_METRICS = [
     "add_to_cart_rate",
     "view_content_rate",
     "page_view_rate",
+    "online_order_rate",
+    "reservation_rate",
 ]
+
+currency_metrics = {
+    "CPC",
+    "CPA",
+    "CPM",
+    "spend",
+}
 
 
 def classify_objective(objective: str) -> str:
@@ -2028,7 +2037,10 @@ def main():
     with tab4:
         st.header("📉 Creative Detail & Fatigue Analysis")
 
-        topic_list = sorted(filtered_df['topic'].dropna().unique().tolist())
+        topic_list = sorted(
+            t for t in filtered_df['topic'].unique().tolist()
+            if t and str(t).strip() != ""
+        )
         if len(topic_list) == 0:
             st.warning("No topics available with current filters.")
             st.stop()
@@ -2303,13 +2315,23 @@ def main():
                     hovermode='x unified'
                 )
         
-                if fatigue_kpi in RATE_METRICS:
-                    fig.update_yaxes(tickformat=".2%")
+                # ---- PRIMARY AXIS formatting ----
+                if fatigue_kpi in rate_metrics:
+                    fig.update_layout(yaxis=dict(tickformat=".2%"))
+                elif fatigue_kpi in currency_metrics:
+                    fig.update_layout(yaxis=dict(tickprefix="$"))
+                else:
+                    fig.update_layout(yaxis=dict(tickformat=None))  # raw numbers
         
-                if secondary_kpi in RATE_METRICS and secondary_kpi != "None":
-                    fig.update_layout(
-                        yaxis2=dict(fig.layout.yaxis2, tickformat=".2%")
-                    )
+                # ---- SECONDARY AXIS formatting ----
+                if secondary_kpi != "None":
+                    if secondary_kpi in rate_metrics:
+                        fig.update_layout(yaxis2=dict(tickformat=".2%"))
+                    elif secondary_kpi in currency_metrics:
+                        fig.update_layout(yaxis2=dict(tickprefix="$"))
+                    else:
+                        fig.update_layout(yaxis2=dict(tickformat=None))
+
         
                 st.plotly_chart(fig, width="stretch")
         

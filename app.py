@@ -2165,27 +2165,56 @@ def main():
                 f"${topic_summary['total_revenue_est']:,.0f}",
             )
 
-        st.markdown("---")
-        col1, col2, col3 = st.columns([1, 1, 2])
-        with col1:
-            journey_role = topic_summary.get('journey_role', 'Engagement')
-            role_emoji = {'Engagement': '📢', 'Intent': '🛒', 'Conversion': '💰'}.get(journey_role, '📊')
-            st.metric("Journey Role", f"{role_emoji} {journey_role}")
-        
-        if 'objective' in topic_summary:
-            with col2:
-                st.metric("Objective", topic_summary['objective'])
-        if 'objective_type' in topic_summary:
-            with col3:
-                st.metric("Objective Type", topic_summary['objective_type'])
-        
-        if journey_role == "Engagement":
-            st.info("💡 **Engagement Creative**: This creative excels at driving clicks and attention. Evaluate it primarily on CTR/CPC performance. Don't over-judge it on final CPA - its role is to generate interest.")
-        elif journey_role == "Intent":
-            st.info("💡 **Intent Creative**: This creative drives mid-funnel actions like add-to-carts and page views. Focus on micro-conversion rates. It's building purchase intent, not necessarily closing sales.")
-        elif journey_role == "Conversion":
-            st.info("💡 **Conversion Creative**: This creative is a closer - it drives final purchases. Evaluate it on CVR, CPA, and ROAS. Strong conversion performance justifies the spend.")
 
+        # ---- Daily aggregation for fatigue charts (smooth lines) ----
+        daily_agg_dict = {
+            "impressions": "sum",
+            "clicks": "sum",
+            "spend": "sum",
+        }
+        
+        for col in ["online_orders", "reservations"]:
+            if col in topic_data.columns:
+                daily_agg_dict[col] = "sum"
+        
+        topic_daily = (
+            topic_data.groupby("date")
+            .agg(daily_agg_dict)
+            .reset_index()
+            .sort_values("date")
+        )
+        
+        # per-day derived metrics
+        topic_daily["CTR"] = np.where(
+            topic_daily["impressions"] > 0,
+            topic_daily["clicks"] / topic_daily["impressions"],
+            0,
+        )
+        topic_daily["CPC"] = np.where(
+            topic_daily["clicks"] > 0,
+            topic_daily["spend"] / topic_daily["clicks"],
+            0,
+        )
+        
+        if "online_orders" in topic_daily.columns:
+            topic_daily["online_order_rate"] = np.where(
+                topic_daily["clicks"] > 0,
+                topic_daily["online_orders"] / topic_daily["clicks"],
+                0,
+            )
+        
+        if "reservations" in topic_daily.columns:
+            topic_daily["reservation_rate"] = np.where(
+                topic_daily["clicks"] > 0,
+                topic_daily["reservations"] / topic_daily["clicks"],
+                0,
+            )
+        
+        topic_daily["cumulative_impressions"] = topic_daily["impressions"].cumsum()
+        topic_daily["age_in_days"] = (
+            topic_daily["date"] - topic_daily["date"].min()
+        ).dt.days
+        
         st.markdown("---")
         st.subheader("Fatigue Analysis")
 
@@ -2207,54 +2236,54 @@ def main():
             index=0
         )
 
-        if len(topic_data) >= 3:
-            age_days = topic_data['age_in_days'].values
-            kpi_values = topic_data[fatigue_kpi].values
-
+        if len(topic_daily) >= 3:
+            age_days = topic_daily['age_in_days'].values
+            kpi_values = topic_daily[fatigue_kpi].values
+        
             valid_indices = ~np.isnan(kpi_values) & ~np.isinf(kpi_values)
             age_days_clean = age_days[valid_indices]
             kpi_values_clean = kpi_values[valid_indices]
-
+        
             if len(age_days_clean) >= 3:
                 coeffs = np.polyfit(age_days_clean, kpi_values_clean, 1)
                 slope = coeffs[0]
                 trend_line = coeffs[0] * age_days_clean + coeffs[1]
-
+        
                 fig = go.Figure()
-
-                # primary KPI
+        
+                # primary KPI (aggregated per day)
                 fig.add_trace(go.Scatter(
-                    x=topic_data['date'],
-                    y=topic_data[fatigue_kpi],
+                    x=topic_daily['date'],
+                    y=topic_daily[fatigue_kpi],
                     mode='lines+markers',
                     name=f'Actual {fatigue_kpi}',
                     line=dict(width=2),
                     marker=dict(size=6),
                     yaxis="y1"
                 ))
-
+        
                 # trend line for primary
                 fig.add_trace(go.Scatter(
-                    x=topic_data['date'].values[valid_indices],
+                    x=topic_daily['date'].values[valid_indices],
                     y=trend_line,
                     mode='lines',
                     name='Trend Line',
                     line=dict(width=2, dash='dash'),
                     yaxis="y1"
                 ))
-
+        
                 # optional secondary KPI
                 if secondary_kpi != "None":
                     fig.add_trace(go.Scatter(
-                        x=topic_data['date'],
-                        y=topic_data[secondary_kpi],
+                        x=topic_daily['date'],
+                        y=topic_daily[secondary_kpi],
                         mode='lines+markers',
                         name=f'{secondary_kpi}',
                         line=dict(width=2, dash='dot'),
                         marker=dict(size=5),
                         yaxis="y2"
                     ))
-
+        
                     fig.update_layout(
                         yaxis=dict(title=fatigue_kpi),
                         yaxis2=dict(
@@ -2267,31 +2296,47 @@ def main():
                     fig.update_layout(
                         yaxis=dict(title=fatigue_kpi)
                     )
-
+        
                 fig.update_layout(
                     title=f"{fatigue_kpi} Over Time for {selected_topic}",
                     xaxis_title="Date",
                     hovermode='x unified'
                 )
-
+        
                 if fatigue_kpi in RATE_METRICS:
                     fig.update_yaxes(tickformat=".2%")
-
+        
                 if secondary_kpi in RATE_METRICS and secondary_kpi != "None":
-                    # Explicitly update yaxis2 layout
                     fig.update_layout(
                         yaxis2=dict(fig.layout.yaxis2, tickformat=".2%")
                     )
-
+        
                 st.plotly_chart(fig, width="stretch")
-
-                rate_metrics = ['CTR', 'CVR', 'purchase_rate', 'add_to_cart_rate', 'view_content_rate', 'page_view_rate']
+        
+                rate_metrics = ['CTR', 'online_order_rate', 'reservation_rate', 'purchase_rate',
+                                'add_to_cart_rate', 'view_content_rate', 'page_view_rate']
                 fatigue_threshold = -0.0001 if fatigue_kpi in rate_metrics else 0.01
                 min_days_for_fatigue = 7
                 min_impressions_for_fatigue = 10000
-
+        
                 total_impressions = topic_summary['impressions']
-                total_days = topic_summary['total_days_active']
+                total_days = topic_summary['days_active']   # <– changed from total_days_active
+        
+                is_fatiguing = (
+                    slope < fatigue_threshold and
+                    total_days >= min_days_for_fatigue and
+                    total_impressions >= min_impressions_for_fatigue
+                )
+        
+                if is_fatiguing:
+                    st.error(f"🔴 **Likely Fatigue Detected** - {fatigue_kpi} is declining over time (slope: {slope:.6f})")
+                else:
+                    st.success(f"🟢 **No Clear Fatigue Signal** - {fatigue_kpi} is stable or improving (slope: {slope:.6f})")
+            else:
+                st.warning("Not enough valid data points to compute trend.")
+        else:
+            st.warning("Not enough data points for fatigue analysis (minimum 3 days required).")
+
 
                 is_fatiguing = (
                     slope < fatigue_threshold and
@@ -2311,43 +2356,43 @@ def main():
         st.markdown("---")
         st.subheader(f"{fatigue_kpi} vs Cumulative Impressions")
 
-        if len(topic_data) >= 3:
+        if len(topic_daily) >= 3:
             fig = go.Figure()
-
+        
             fig.add_trace(go.Scatter(
-                x=topic_data['cumulative_impressions'],
-                y=topic_data[fatigue_kpi],
+                x=topic_daily['cumulative_impressions'],
+                y=topic_daily[fatigue_kpi],
                 mode='lines+markers',
                 name=f'{fatigue_kpi}',
-                line=dict(color='green', width=2),
+                line=dict(width=2),
                 marker=dict(size=6)
             ))
-
-            cum_impr = topic_data['cumulative_impressions'].values
-            kpi_vals = topic_data[fatigue_kpi].values
-
+        
+            cum_impr = topic_daily['cumulative_impressions'].values
+            kpi_vals = topic_daily[fatigue_kpi].values
+        
             valid_idx = ~np.isnan(kpi_vals) & ~np.isinf(kpi_vals)
             if np.sum(valid_idx) >= 3:
                 coeffs_cum = np.polyfit(cum_impr[valid_idx], kpi_vals[valid_idx], 1)
                 trend_cum = coeffs_cum[0] * cum_impr[valid_idx] + coeffs_cum[1]
-
+        
                 fig.add_trace(go.Scatter(
                     x=cum_impr[valid_idx],
                     y=trend_cum,
                     mode='lines',
                     name='Trend Line',
-                    line=dict(color='red', width=2, dash='dash')
+                    line=dict(width=2, dash='dash')
                 ))
-
+        
             fig.update_layout(
-                title=f"{fatigue_kpi} vs Cumulative Impressions",
+                title=f"{fatigue_kpi} vs Cumulative Impressions (Topic: {selected_topic})",
                 xaxis_title="Cumulative Impressions",
                 yaxis_title=fatigue_kpi,
                 hovermode='x unified'
             )
             if fatigue_kpi in RATE_METRICS:
                 fig.update_yaxes(tickformat=".2%")
-
+        
             st.plotly_chart(fig, width="stretch")
         else:
             st.warning("Not enough data points for cumulative impression analysis.")

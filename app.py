@@ -2337,22 +2337,6 @@ def main():
         else:
             st.warning("Not enough data points for fatigue analysis (minimum 3 days required).")
 
-
-                is_fatiguing = (
-                    slope < fatigue_threshold and
-                    total_days >= min_days_for_fatigue and
-                    total_impressions >= min_impressions_for_fatigue
-                )
-
-                if is_fatiguing:
-                    st.error(f"🔴 **Likely Fatigue Detected** - {fatigue_kpi} is declining over time (slope: {slope:.6f})")
-                else:
-                    st.success(f"🟢 **No Clear Fatigue Signal** - {fatigue_kpi} is stable or improving (slope: {slope:.6f})")
-            else:
-                st.warning("Not enough valid data points to compute trend.")
-        else:
-            st.warning("Not enough data points for fatigue analysis (minimum 3 days required).")
-
         st.markdown("---")
         st.subheader(f"{fatigue_kpi} vs Cumulative Impressions")
 

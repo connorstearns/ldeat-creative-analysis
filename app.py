@@ -1179,26 +1179,61 @@ def main():
 
     # make sure we're using only valid dates
     date_series = df["date"].dropna()
-    
+
+    # --- DATE FILTERING ---
     min_date = df["date"].min()
     max_date = df["date"].max()
     
-    # --- QUICK DATE FILTERS ---
+    # Sort once
+    df_sorted = df.sort_values("date")
+    
+    # Determine "current" fiscal year from the most recent row
+    current_fy = None
+    df_fy = None
+    period_order = []
+    current_period = None
+    
+    if "fiscal_year" in df.columns:
+        latest_row = df_sorted.iloc[-1]
+        current_fy = latest_row["fiscal_year"]
+    
+        # restrict to this fiscal year only
+        df_fy = df_sorted[df_sorted["fiscal_year"] == current_fy]
+    
+        if "period" in df_fy.columns and not df_fy.empty:
+            # order periods within this fiscal year by their first date
+            period_order = (
+                df_fy.groupby("period")["date"]
+                .min()
+                .sort_values()
+                .index
+                .tolist()
+            )
+            current_period = df_fy.iloc[-1]["period"]
+    
+    # For week-based filters (can span years; that’s usually fine)
+    week_starts = None
+    if "week_start" in df.columns:
+        week_starts = sorted(df["week_start"].dropna().unique())
+    
     quick_choice = st.sidebar.radio(
         "Quick Date Filter",
-        options=["Custom Range", "This Week", "Last Week", "This Period", "This Fiscal Year"],
+        options=[
+            "Custom Range",
+            "This Week",
+            "Last Week",
+            "This Period",
+            "Last Period",
+            "This Fiscal Year",
+        ],
         index=0,
-        help="Use quick filters based on Week Start / Period / Fiscal Year, or choose a custom range."
+        help="Use quick filters based on Week Start / Period / Fiscal Year, or choose a custom range.",
     )
     
     start_date = min_date
     end_date = max_date
     
-    # Helper: unique week starts sorted
-    week_starts = None
-    if "week_start" in df.columns:
-        week_starts = sorted(df["week_start"].dropna().unique())
-    
+    # ---- Custom Range ----
     if quick_choice == "Custom Range":
         date_range = st.sidebar.date_input(
             "Date Range",
@@ -1211,41 +1246,64 @@ def main():
         else:
             start_date, end_date = (min_date, max_date)
     
+    # ---- This Week ----
     elif quick_choice == "This Week" and week_starts is not None and len(week_starts) >= 1:
         this_week_start = week_starts[-1]
         start_date = this_week_start
         end_date = this_week_start + pd.Timedelta(days=6)
         st.sidebar.info(f"Using week starting {start_date.date()}")
     
+    # ---- Last Week ----
     elif quick_choice == "Last Week" and week_starts is not None and len(week_starts) >= 2:
         last_week_start = week_starts[-2]
         start_date = last_week_start
         end_date = last_week_start + pd.Timedelta(days=6)
         st.sidebar.info(f"Using week starting {start_date.date()}")
     
-    elif quick_choice == "This Period" and "period" in df.columns:
-        # Take the period of the most recent date in the dataset
-        latest_row = df.sort_values("date").iloc[-1]
-        this_period = latest_row["period"]
-        period_mask = df["period"] == this_period
+    # ---- This Period (within current fiscal year) ----
+    elif quick_choice == "This Period" and df_fy is not None and current_period is not None:
+        period_mask = (df["fiscal_year"] == current_fy) & (df["period"] == current_period)
         period_dates = df.loc[period_mask, "date"]
         if not period_dates.empty:
             start_date = period_dates.min()
             end_date = period_dates.max()
-            st.sidebar.info(f"Using Period {this_period} ({start_date.date()} – {end_date.date()})")
+            st.sidebar.info(
+                f"Using Period {current_period} in FY {current_fy} "
+                f"({start_date.date()} – {end_date.date()})"
+            )
     
-    elif quick_choice == "This Fiscal Year" and "fiscal_year" in df.columns:
-        # Use the fiscal year of the most recent row
-        latest_row = df.sort_values("date").iloc[-1]
-        this_fy = latest_row["fiscal_year"]
-        fy_mask = df["fiscal_year"] == this_fy
-        fy_dates = df.loc[fy_mask, "date"]
-        if not fy_dates.empty:
-            start_date = fy_dates.min()
-            end_date = fy_dates.max()
-            st.sidebar.info(f"Using Fiscal Year {this_fy} ({start_date.date()} – {end_date.date()})")
+    # ---- Last Period (within current fiscal year) ----
+    elif (
+        quick_choice == "Last Period"
+        and df_fy is not None
+        and current_period is not None
+        and period_order
+        and current_period in period_order
+    ):
+        idx = period_order.index(current_period)
+        if idx > 0:  # there *is* a previous period in this FY
+            last_period = period_order[idx - 1]
+            last_period_mask = (df["fiscal_year"] == current_fy) & (df["period"] == last_period)
+            last_period_dates = df.loc[last_period_mask, "date"]
+            if not last_period_dates.empty:
+                start_date = last_period_dates.min()
+                end_date = last_period_dates.max()
+                st.sidebar.info(
+                    f"Using Last Period {last_period} in FY {current_fy} "
+                    f"({start_date.date()} – {end_date.date()})"
+                )
     
-    # Fallback guards in case something above failed
+    # ---- This Fiscal Year ----
+    elif quick_choice == "This Fiscal Year" and df_fy is not None and not df_fy.empty:
+        fy_dates = df_fy["date"]
+        start_date = fy_dates.min()
+        end_date = fy_dates.max()
+        st.sidebar.info(
+            f"Using Fiscal Year {current_fy} "
+            f"({start_date.date()} – {end_date.date()})"
+        )
+    
+    # Fallback guards
     if pd.isna(start_date):
         start_date = min_date
     if pd.isna(end_date):

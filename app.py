@@ -1466,7 +1466,7 @@ def main():
     with st.sidebar:
         st.markdown("## Filters")
     
-        # PLATFORM
+        # PLATFORM  (always required)
         platform_opts = ["All"] + sorted(df["platform"].dropna().unique().tolist())
         selected_platforms = st.multiselect(
             "Platform",
@@ -1476,56 +1476,79 @@ def main():
         if "All" in selected_platforms:
             selected_platforms = None  # means no filter
     
-        # BUSINESS OBJECTIVE
-        business_objective_opts = ["All"] + sorted(df["business_objective"].dropna().unique().tolist())
-        selected_business_objectives = st.multiselect(
-            "Business Objective",
-            options=business_objective_opts,
-            default=business_objective_opts,
-        )
-        if "All" in selected_business_objectives:
+        # BUSINESS OBJECTIVE (optional)
+        if "business_objective" in df.columns:
+            business_objective_opts = ["All"] + sorted(
+                df["business_objective"].dropna().unique().tolist()
+            )
+            selected_business_objectives = st.multiselect(
+                "Business Objective",
+                options=business_objective_opts,
+                default=business_objective_opts,
+            )
+            if "All" in selected_business_objectives:
+                selected_business_objectives = None
+        else:
             selected_business_objectives = None
     
-        # OBJECTIVE TYPE
-        objective_type_opts = ["All"] + sorted(df["objective_type"].dropna().unique().tolist())
-        selected_objective_type = st.selectbox(
-            "Objective Type",
-            options=objective_type_opts,
-            index=0,
-        )
-        if selected_objective_type == "All":
+        # OBJECTIVE TYPE (optional – only if created from `objective`)
+        if "objective_type" in df.columns:
+            objective_type_opts = ["All"] + sorted(
+                df["objective_type"].dropna().unique().tolist()
+            )
+            selected_objective_type = st.selectbox(
+                "Objective Type",
+                options=objective_type_opts,
+                index=0,
+            )
+            if selected_objective_type == "All":
+                selected_objective_type = None
+        else:
             selected_objective_type = None
     
-        # CAMPAIGN FORMAT
-        campaign_format_opts = ["All"] + sorted(df["campaign_format"].dropna().unique().tolist())
-        selected_campaign_formats = st.multiselect(
-            "Campaign Format",
-            options=campaign_format_opts,
-            default=campaign_format_opts,
-        )
-        if "All" in selected_campaign_formats:
+        # CAMPAIGN FORMAT (optional)
+        if "campaign_format" in df.columns:
+            campaign_format_opts = ["All"] + sorted(
+                df["campaign_format"].dropna().unique().tolist()
+            )
+            selected_campaign_formats = st.multiselect(
+                "Campaign Format",
+                options=campaign_format_opts,
+                default=campaign_format_opts,
+            )
+            if "All" in selected_campaign_formats:
+                selected_campaign_formats = None
+        else:
             selected_campaign_formats = None
     
-        # TOPIC
-        topic_opts = ["All"] + sorted(
-            [t for t in df["topic"].dropna().unique().tolist() if t.strip() != ""]
-        )
-        selected_topics = st.multiselect(
-            "Topic",
-            options=topic_opts,
-            default=topic_opts,
-        )
-        if "All" in selected_topics:
+        # TOPIC (optional, skip blanks)
+        if "topic" in df.columns:
+            topic_opts_raw = [t for t in df["topic"].dropna().unique().tolist() if t.strip() != ""]
+            if topic_opts_raw:
+                topic_opts = ["All"] + sorted(topic_opts_raw)
+                selected_topics = st.multiselect(
+                    "Topic",
+                    options=topic_opts,
+                    default=topic_opts,
+                )
+                if "All" in selected_topics:
+                    selected_topics = None
+            else:
+                selected_topics = None
+        else:
             selected_topics = None
-    
-        # PLACEMENT
-        placement_opts = ["All"] + sorted(df["placement"].dropna().unique().tolist())
-        selected_placements = st.multiselect(
-            "Placement",
-            options=placement_opts,
-            default=placement_opts,
-        )
-        if "All" in selected_placements:
+
+        # PLACEMENT (optional)
+        if "placement" in df.columns:
+            placement_opts = ["All"] + sorted(df["placement"].dropna().unique().tolist())
+            selected_placements = st.multiselect(
+                "Placement",
+                options=placement_opts,
+                default=placement_opts,
+            )
+            if "All" in selected_placements:
+                selected_placements = None
+        else:
             selected_placements = None
 
 

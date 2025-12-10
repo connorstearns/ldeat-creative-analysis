@@ -1124,7 +1124,7 @@ def main():
     if not check_password():
         st.stop()
         
-    st.sidebar.title("📊 Creative Analytics")
+    st.sidebar.title("📊 Lazy Dog Media Performance Tracker")
     st.sidebar.markdown("---")
 
     # ⬇️ Only the template download UI lives in the expander
@@ -2289,26 +2289,64 @@ def main():
 
         st.markdown("---")
         st.subheader("CTR vs CPC Performance by Topic")
-
-        plot_data = creative_metrics[creative_metrics['topic'].notna()].copy()
-
-        if len(plot_data) == 0:
+        
+        # only rows with a topic
+        topic_level = creative_metrics[creative_metrics["topic"].notna()].copy()
+        
+        if len(topic_level) == 0:
             st.warning("No data available with topics after filtering.")
         else:
-            fig = px.scatter(
-                plot_data,
-                x='CPC',
-                y='CTR',
-                size='spend',
-                color='topic',
-                hover_data=['creative_name', 'platform', 'impressions', 'clicks'],
-                title="Creative Performance: CTR vs CPC by Topic (bubble size = spend)",
-                labels={'CPC': 'Cost Per Click ($)', 'CTR': 'Click-Through Rate', 'topic': 'Topic'},
-                color_discrete_sequence=px.colors.qualitative.Set2
+            # aggregate creatives up to topic level
+            topic_summary = (
+                topic_level
+                .groupby("topic")
+                .agg(
+                    impressions=("impressions", "sum"),
+                    clicks=("clicks", "sum"),
+                    spend=("spend", "sum"),
+                    num_creatives=("creative_name", "nunique"),
+                )
+                .reset_index()
             )
+        
+            # compute topic-level CTR & CPC
+            topic_summary["CTR"] = np.where(
+                topic_summary["impressions"] > 0,
+                topic_summary["clicks"] / topic_summary["impressions"],
+                0,
+            )
+            topic_summary["CPC"] = np.where(
+                topic_summary["clicks"] > 0,
+                topic_summary["spend"] / topic_summary["clicks"],
+                0,
+            )
+        
+            fig = px.scatter(
+                topic_summary,
+                x="CPC",
+                y="CTR",
+                size="spend",
+                color="topic",
+                hover_data=[
+                    "impressions",
+                    "clicks",
+                    "spend",
+                    "num_creatives",
+                ],
+                title="CTR vs CPC Performance by Topic (bubble size = spend)",
+                labels={
+                    "CPC": "Cost Per Click ($)",
+                    "CTR": "Click-Through Rate",
+                    "topic": "Topic",
+                    "num_creatives": "# of Creatives",
+                },
+                color_discrete_sequence=px.colors.qualitative.Set2,
+            )
+        
             fig.update_yaxes(tickformat=".2%")
-            fig.update_layout(hovermode='closest', height=500)
+            fig.update_layout(hovermode="closest", height=500)
             st.plotly_chart(fig, width="stretch")
+
 
         st.markdown("---")
         st.subheader("📊 Spend by Topic & Journey Role")

@@ -1153,9 +1153,10 @@ def main():
     page_icon="lazy-dog-restaurant-favicon.png", 
     layout="wide"
 )
+    
     # SET LOGO & TITLE
     logo_path = "lazy_dog_logo.png"  # file is in repo root
-    
+        
     with st.sidebar:
         st.markdown("""
             <style>
@@ -1170,7 +1171,7 @@ def main():
         """, unsafe_allow_html=True)
     
         st.markdown(
-            "<img class='sidebar-logo' src='lazy_dog_logo.png' width='240'>",
+            f"<img class='sidebar-logo' src='{logo_path}' width='240'>",
             unsafe_allow_html=True
         )
     
@@ -1181,22 +1182,18 @@ def main():
         """, unsafe_allow_html=True)
     
         st.markdown("<hr style='margin-top:0px;'>", unsafe_allow_html=True)
-
     
-    # 👇 RUN PASSWORD CHECK HERE!
-    if not check_password():
-        st.stop()
-
-    with st.sidebar.expander("🔗 View Source Data (Google Sheet)"):
-        st.markdown("""
-        View or download the live Lazy Dog creative tracking sheet directly in Google Sheets.  
-        """)
     
-        st.markdown(
-            f"[👉 Open Google Sheet](https://docs.google.com/spreadsheets/d/1JcSaWPiavp2_XLV8OVPlxvg8fJGTmNQTZotDeJLXous/edit?gid=1029811642#gid=1029811642)"
-        )
-    
-        st.sidebar.markdown("---")
+        with st.sidebar.expander("🔗 View Source Data (Google Sheet)"):
+            st.markdown("""
+            View or download the live Lazy Dog creative tracking sheet directly in Google Sheets.  
+            """)
+        
+            st.markdown(
+                f"[👉 Open Google Sheet](https://docs.google.com/spreadsheets/d/1JcSaWPiavp2_XLV8OVPlxvg8fJGTmNQTZotDeJLXous/edit?gid=1029811642#gid=1029811642)"
+            )
+        
+            st.sidebar.markdown("---")
 
     # --- LOAD GOOGLE SHEET USING SERVICE ACCOUNT ---
     try:

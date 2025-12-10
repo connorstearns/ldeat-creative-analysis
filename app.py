@@ -79,6 +79,25 @@ CURRENCY_METRICS_SET = {
     "cost_per_store_visit",
 }
 
+pd.options.display.float_format = '{:,.2f}'.format
+
+def format_currency_columns(df):
+    currency_cols = [
+        'spend','Spend',
+        'total_spend','Total Spend',
+        'cpc','CPC',
+        'cpa','CPA',
+        'cpm','CPM',
+        'online_order_revenue',
+        'reservation_revenue',
+        'store_sales',
+        'total_revenue_est'
+    ]
+    for col in df.columns:
+        if col.lower() in [c.lower() for c in currency_cols]:
+            df[col] = df[col].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else x)
+    return df
+
 def classify_objective(objective: str) -> str:
     """
     Classify objective into Awareness, Conversion, or Other based on keywords.
@@ -2007,7 +2026,12 @@ def main():
         
         st.session_state["selected_topic"] = topic_for_creative
 
-        st.dataframe(display_df, width="stretch", height=400, column_config=column_config)
+        st.dataframe(
+            format_currency_columns(topic_metrics.copy()),
+            width="stretch",
+            height=400,
+            column_config=topic_column_config
+        )
 
         csv_leaderboard = display_df.to_csv(index=False).encode("utf-8")
         st.download_button(
@@ -2686,7 +2710,12 @@ def main():
             topic_column_config['conversions'] = st.column_config.NumberColumn('Conversions', format="%,d")
             topic_column_config['CPA'] = st.column_config.NumberColumn('CPA', format="$ %.2f")
 
-        st.dataframe(topic_metrics, width="stretch", height=400, column_config=topic_column_config)
+        st.dataframe(
+            format_currency_columns(display_df.copy()),
+            width="stretch",
+            height=400,
+            column_config=column_config
+        )
 
         csv_topics = topic_metrics.to_csv(index=False).encode("utf-8")
         st.download_button(

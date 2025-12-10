@@ -98,20 +98,28 @@ def format_currency_columns(df):
             df[col] = df[col].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else x)
     return df
 
-def classify_objective(objective: str) -> str:
+def classify_campaign_type(creative_name: str) -> str:
     """
-    Classify objective into Awareness, Conversion, or Other based on keywords.
+    Classify creative into a high-level Campaign Type
+    (Awareness / Traffic / Conversion) based on creative_name.
     """
-    if not isinstance(objective, str):
+    if not isinstance(creative_name, str):
         return "Other"
-    obj = objective.lower()
-    awareness_keywords = ["awareness", "reach", "video view", "brand", "impression"]
+
+    name = creative_name.lower()
+
+    awareness_keywords = ["awareness", "reach", "video view", "brand", "impression", "awr"]
+    traffic_keywords   = ["traffic", "engagement", "clicks"]
     conversion_keywords = ["conversion", "purchase", "sale", "lead", "catalog", "app install"]
 
-    if any(k in obj for k in awareness_keywords):
-        return "Awareness"
-    if any(k in obj for k in conversion_keywords):
+    # You can tweak precedence if needed. Here Conversion > Traffic > Awareness.
+    if any(k in name for k in conversion_keywords):
         return "Conversion"
+    if any(k in name for k in traffic_keywords):
+        return "Traffic"
+    if any(k in name for k in awareness_keywords):
+        return "Awareness"
+
     return "Other"
 
 def classify_business_objective(campaign_name: str) -> str:
@@ -459,6 +467,8 @@ def load_and_prepare_data(df_raw: pd.DataFrame):
         # --- 7) Sort, age, cumulative impressions, objective classification ---
         df = df.sort_values(["creative_name", "date"])
 
+        df["campaign_type"] = df["creative_name"].apply(classify_campaign_type)
+
         df["business_objective"] = df["campaign_name"].apply(classify_business_objective)
 
         creative_first_dates = df.groupby("creative_name")["date"].transform("min")
@@ -513,6 +523,13 @@ def apply_global_filters(df, filters):
 
     if 'objective_type' in filtered_df.columns and filters.get('objective_type') not in (None, 'All'):
         filtered_df = filtered_df[filtered_df['objective_type'] == filters['objective_type']]
+
+    if filters.get('campaign_types') is not None and 'campaign_type' in filtered_df.columns:
+    all_types_in_data = set(df['campaign_type'].dropna().unique())
+    if set(filters['campaign_types']) != all_types_in_data:
+        filtered_df = filtered_df[
+            filtered_df['campaign_type'].isin(filters['campaign_types'])
+        ]
 
     if filters.get('topics') is not None and 'topic' in df.columns:
         all_topics_in_data = set(df['topic'].dropna().unique())
@@ -587,6 +604,9 @@ def compute_aggregated_creative_metrics(df):
 
     if 'objective_type' in df.columns:
         agg_dict['objective_type'] = 'first'
+
+    if 'campaign_type' in df.columns:
+        agg_dict['campaign_type'] = 'first'
 
     if 'topic' in df.columns:
         agg_dict['topic'] = 'first'
@@ -1441,14 +1461,17 @@ def main():
             index=0
         )
 
-    selected_formats = None
-    if 'format' in df.columns:
-        all_formats = sorted([f for f in df['format'].dropna().unique().tolist()])
-        if all_formats:
-            selected_formats = st.sidebar.multiselect(
-                "Format",
-                options=all_formats,
-                default=all_formats
+    selected_campaign_types = None
+    if "campaign_type" in df.columns:
+        all_campaign_types = sorted(
+            [t for t in df["campaign_type"].dropna().unique().tolist()]
+        )
+        if all_campaign_types:
+            selected_campaign_types = st.sidebar.multiselect(
+                "Campaign Type",
+                options=all_campaign_types,
+                default=all_campaign_types,
+                help="Derived from creative names (Awareness, Traffic, Conversion, Other).",
             )
 
     selected_placements = None
@@ -1540,6 +1563,7 @@ def main():
         'business_objectives': selected_business_objectives if selected_business_objectives else None, 
         'objectives': selected_objectives if selected_objectives else None,
         'objective_type': selected_objective_type,
+        'campaign_types': selected_campaign_types if selected_campaign_types else None,  # NEW
         'topics': selected_topics if selected_topics else None,
         'formats': selected_formats if selected_formats else None,
         'placements': selected_placements if selected_placements else None, 

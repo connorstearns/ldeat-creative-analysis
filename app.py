@@ -1617,7 +1617,6 @@ def main():
         'platforms': selected_platforms if selected_platforms else all_platforms,
         'campaign_formats': selected_campaign_formats if selected_campaign_formats else None,
         'business_objectives': selected_business_objectives if selected_business_objectives else None, 
-        'objectives': selected_objectives if selected_objectives else None,
         'objective_type': selected_objective_type,
         'campaign_types': selected_campaign_types if selected_campaign_types else None,  # NEW
         'topics': selected_topics if selected_topics else None,

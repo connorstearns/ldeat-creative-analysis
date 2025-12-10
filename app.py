@@ -59,15 +59,15 @@ def load_google_sheet_to_df():
 @st.cache_data
 def load_campaign_plan_df():
     """
-    Optional: load planned spend per campaign/topic from a second worksheet
+    Optional: load planned spend per campaign from a second worksheet
     in the same Google Sheet.
 
     Expected worksheet name (first that exists): 
       - 'Campaign Plan'  or  'Expected Spend'
 
     Expected columns (case-insensitive):
-      - topic / campaign / campaign_name   -> mapped to 'topic'
-      - planned_spend / plan_spend / budget / expected_spend -> mapped to 'planned_spend'
+      - Campaign Name / Campaign / Campaign_Name / Topic -> campaign identifier
+      - Planned Spend / Planned_Spend / Budget / Expected Spend -> planned_spend
     """
     try:
         sa = st.secrets["gcp_service_account"]
@@ -92,29 +92,31 @@ def load_campaign_plan_df():
 
         df_plan = pd.DataFrame(data)
 
-        # --- normalize columns ---
+        # --- normalize columns (case-insensitive) ---
         cols_lower = {c.lower(): c for c in df_plan.columns}
 
-        topic_col = None
-        for cand in ["topic", "campaign", "campaign_name"]:
+        # campaign dimension column
+        plan_name_key = None
+        for cand in ["campaign name", "campaign", "campaign_name", "topic"]:
             if cand in cols_lower:
-                topic_col = cols_lower[cand]
+                plan_name_key = cols_lower[cand]
                 break
 
-        planned_col = None
-        for cand in ["planned_spend", "plan_spend", "budget", "expected_spend"]:
+        # planned spend column
+        plan_spend_key = None
+        for cand in ["planned spend", "planned_spend", "plan spend", "plan_spend", "budget", "expected spend", "expected_spend"]:
             if cand in cols_lower:
-                planned_col = cols_lower[cand]
+                plan_spend_key = cols_lower[cand]
                 break
 
-        if topic_col is None or planned_col is None:
-            # sheet exists but doesn't have the right columns
+        if plan_name_key is None or plan_spend_key is None:
+            # Sheet exists but does not have the expected columns
             return None
 
         df_plan = df_plan.rename(
             columns={
-                topic_col: "topic",
-                planned_col: "planned_spend",
+                plan_name_key: "campaign_name_raw",
+                plan_spend_key: "planned_spend",
             }
         )
 
@@ -129,10 +131,12 @@ def load_campaign_plan_df():
             df_plan["planned_spend"], errors="coerce"
         ).fillna(0.0)
 
-        # key for robust joining
-        df_plan["topic_key"] = df_plan["topic"].astype(str).str.strip().str.lower()
+        # canonical key for joining
+        df_plan["campaign_name"] = (
+            df_plan["campaign_name_raw"].astype(str).str.strip().str.lower()
+        )
 
-        return df_plan
+        return df_plan[["campaign_name", "planned_spend"]]
 
     except Exception as e:
         st.warning(f"⚠️ Unable to load campaign plan sheet: {e}")
@@ -2979,10 +2983,10 @@ def main():
             topic_column_config['CPA'] = st.column_config.NumberColumn('CPA', format="$ %.2f")
 
         st.dataframe(
-            format_currency_columns(display_df.copy()),
+            format_currency_columns(topic_metrics.copy()),
             width="stretch",
             height=400,
-            column_config=column_config
+            column_config=topic_column_config
         )
 
         csv_topics = topic_metrics.to_csv(index=False).encode("utf-8")

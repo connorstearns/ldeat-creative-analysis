@@ -1147,47 +1147,39 @@ def show_welcome_screen():
 
 
 def main():
+    # SET FAVICON
     st.set_page_config(
     page_title="Lazy Dog Creative Performance",
     page_icon="lazy-dog-restaurant-favicon.png", 
     layout="wide"
 )
+    # SET LOGO & TITLE
+    logo_path = "lazy_dog_logo.png"  # update to your actual path
+
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        st.image(logo_path, width=120)  # adjust width to whatever looks best
+    with col2:
+        st.markdown("""
+            <div style="padding-top:20px;">
+                <h1 style="margin-bottom:0;">Media Performance Tracker</h1>
+            </div>
+        """, unsafe_allow_html=True)
+    
     # 👇 RUN PASSWORD CHECK HERE!
     if not check_password():
         st.stop()
-        
-    st.sidebar.title("📊 Lazy Dog Media Performance Tracker")
-    st.sidebar.markdown("---")
 
-    # ⬇️ Only the template download UI lives in the expander
-    with st.sidebar.expander("📥 Download CSV Template"):
+    with st.sidebar.expander("🔗 View Source Data (Google Sheet)"):
         st.markdown("""
-        Download a sample CSV showing the expected column names and structure for Lazy Dog.
+        View or download the live Lazy Dog creative tracking sheet directly in Google Sheets.  
         """)
-
-        template_columns = [
-            "Date", "Week Start", "Period", "Fiscal Year",
-            "Channel", "Campaign", "Campaign Type", "Content Topic",
-            "Ad name", "Creative Size", "Spend", "Impressions", "Clicks",
-            "Video Views", "Video Completions", "Online Order",
-            "Online Order Revenue", "Store Traffic", "Store Visit Revenue",
-            "Reservations", "Content Views", "Add To Carts", "Page Views",
-        ]
-
-        template_df = pd.DataFrame(columns=template_columns)
-        template_csv = template_df.to_csv(index=False).encode("utf-8")
-
-        st.download_button(
-            label="⬇️ Download Template",
-            data=template_csv,
-            file_name="lazy_dog_creative_template.csv",
-            mime="text/csv",
-            help="Download a sample CSV file showing the expected format",
+    
+        st.markdown(
+            f"[👉 Open Google Sheet](https://docs.google.com/spreadsheets/d/1JcSaWPiavp2_XLV8OVPlxvg8fJGTmNQTZotDeJLXous/edit?gid=1029811642#gid=1029811642)"
         )
-
-    # 🔚 end expander
-
-    st.sidebar.markdown("---")
+    
+        st.sidebar.markdown("---")
 
     # --- LOAD GOOGLE SHEET USING SERVICE ACCOUNT ---
     try:

@@ -67,13 +67,16 @@ RATE_METRICS = [
     "reservation_rate",
 ]
 
-currency_metrics = {
+RATE_METRICS_SET = set(RATE_METRICS)
+
+CURRENCY_METRICS_SET = {
     "CPC",
     "CPA",
     "CPM",
     "spend",
-}
-
+    "cost_per_online_order",
+    "cost_per_reservation",
+    "cost_per_store_visit",
 
 def classify_objective(objective: str) -> str:
     """
@@ -2316,23 +2319,22 @@ def main():
                 )
         
                 # ---- PRIMARY AXIS formatting ----
-                if fatigue_kpi in rate_metrics:
+                if fatigue_kpi in RATE_METRICS_SET:
                     fig.update_layout(yaxis=dict(tickformat=".2%"))
-                elif fatigue_kpi in currency_metrics:
+                elif fatigue_kpi in CURRENCY_METRICS_SET:
                     fig.update_layout(yaxis=dict(tickprefix="$"))
                 else:
-                    fig.update_layout(yaxis=dict(tickformat=None))  # raw numbers
+                    fig.update_layout(yaxis=dict(tickformat=None))
         
                 # ---- SECONDARY AXIS formatting ----
                 if secondary_kpi != "None":
-                    if secondary_kpi in rate_metrics:
+                    if secondary_kpi in RATE_METRICS_SET:
                         fig.update_layout(yaxis2=dict(tickformat=".2%"))
-                    elif secondary_kpi in currency_metrics:
+                    elif secondary_kpi in CURRENCY_METRICS_SET:
                         fig.update_layout(yaxis2=dict(tickprefix="$"))
                     else:
                         fig.update_layout(yaxis2=dict(tickformat=None))
 
-        
                 st.plotly_chart(fig, width="stretch")
         
                 rate_metrics = ['CTR', 'online_order_rate', 'reservation_rate', 'purchase_rate',

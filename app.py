@@ -77,6 +77,7 @@ CURRENCY_METRICS_SET = {
     "cost_per_online_order",
     "cost_per_reservation",
     "cost_per_store_visit",
+}
 
 def classify_objective(objective: str) -> str:
     """

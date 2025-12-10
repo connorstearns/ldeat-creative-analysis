@@ -2033,82 +2033,137 @@ def main():
             st.warning("No topics available with current filters.")
             st.stop()
 
-        # default to last selected creative if available
-        default_topic = st.session_state.get("selected_topic", topic_list[0])
-        if default_topic not in topic_list:
-            default_topic = topic_list[0]
-
+        # ensure we have a valid selected_topic in session_state
+        if "selected_topic" not in st.session_state or st.session_state["selected_topic"] not in topic_list:
+            st.session_state["selected_topic"] = topic_list[0]
+        
         selected_topic = st.selectbox(
             "Select Topic to Analyze",
             options=topic_list,
-            key="selected_topic"
+            index=topic_list.index(st.session_state["selected_topic"]),
+            key="topic_detail_select",   # new key just for this widget
         )
+        
+        # keep global selected_topic in sync
+        st.session_state["selected_topic"] = selected_topic
 
+
+        # ---- Topic-level data + summary ----
+        AVG_RES_CHECK = 62.0  # keep in sync with rest of app
+        
         # all rows for this topic
         topic_data = filtered_df[filtered_df["topic"] == selected_topic].copy()
         topic_data = topic_data.sort_values("date")
         
-        # aggregate to topic level using creative metrics, then roll up
-        topic_creative_metrics = compute_aggregated_creative_metrics(
-            filtered_df[filtered_df["topic"] == selected_topic]
-        )
+        if topic_data.empty:
+            st.warning("No data for this topic with current filters.")
+            st.stop()
+        
+        # aggregate to topic level (totals)
+        agg_dict = {
+            "impressions": "sum",
+            "clicks": "sum",
+            "spend": "sum",
+        }
+        
+        for col in [
+            "online_orders",
+            "online_order_revenue",
+            "reservations",
+            "reservation_revenue",
+            "store_visits",
+            "store_sales",
+        ]:
+            if col in topic_data.columns:
+                agg_dict[col] = "sum"
         
         topic_summary = (
-            topic_creative_metrics
-            .assign(topic=selected_topic)  # ensure column exists
-            .groupby("topic")
-            .agg(
-                platform=("platform", lambda x: ", ".join(sorted(x.unique()))),
-                campaign_name=("campaign_name", lambda x: ", ".join(sorted(x.unique())[:3]) + ("…" if x.nunique() > 3 else "")),
-                spend=("spend", "sum"),
-                impressions=("impressions", "sum"),
-                clicks=("clicks", "sum"),
-                CTR=("CTR", "mean"),
-                CPC=("CPC", "mean"),
-                CPM=("CPM", "mean"),
-                total_days_active=("total_days_active", "max"),
-            )
+            topic_data.groupby("topic")
+            .agg(agg_dict)
             .reset_index()
             .iloc[0]
         )
-
+        
+        # extra display fields
+        topic_summary["platforms"] = ", ".join(
+            sorted(topic_data["platform"].dropna().unique())
+        )
+        topic_summary["days_active"] = topic_data["date"].nunique()
+        
+        # ---- derived funnel metrics ----
+        impr = topic_summary["impressions"]
+        clicks = topic_summary["clicks"]
+        spend = topic_summary["spend"]
+        
+        topic_summary["CTR"] = clicks / impr if impr > 0 else 0
+        topic_summary["CPC"] = spend / clicks if clicks > 0 else 0
+        topic_summary["CPM"] = spend / impr * 1000 if impr > 0 else 0
+        
+        online_orders = topic_summary.get("online_orders", 0)
+        reservations = topic_summary.get("reservations", 0)
+        
+        topic_summary["online_order_rate"] = (
+            online_orders / clicks if clicks > 0 and online_orders > 0 else 0
+        )
+        topic_summary["reservation_rate"] = (
+            reservations / clicks if clicks > 0 and reservations > 0 else 0
+        )
+        
+        # revenues + blended ROAS
+        online_rev = topic_summary.get("online_order_revenue", 0.0)
+        
+        if "reservation_revenue" in topic_summary.index:
+            res_rev = topic_summary["reservation_revenue"]
+        else:
+            res_rev = reservations * AVG_RES_CHECK
+        
+        store_sales = topic_summary.get("store_sales", 0.0)
+        
+        total_rev = online_rev + res_rev + store_sales
+        topic_summary["total_revenue_est"] = total_rev
+        topic_summary["total_roas"] = total_rev / spend if spend > 0 else 0
+        
         st.markdown("---")
-        st.subheader("Creative Summary")
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-
+        st.subheader("Topic Summary")
+        
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Platform", topic_summary['platform'])
+            st.metric("Platform(s)", topic_summary["platforms"])
         with col2:
-            st.metric("Campaign", topic_summary['campaign_name'])
-        with col3:
             st.metric("Total Spend", f"${topic_summary['spend']:,.2f}")
-        with col4:
+        with col3:
             st.metric("Impressions", f"{topic_summary['impressions']:,.0f}")
-        with col5:
-            st.metric("Days Active", f"{topic_summary['total_days_active']:.0f}")
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-
+        with col4:
+            st.metric("Days Active", f"{topic_summary['days_active']:.0f}")
+        
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("CTR", f"{topic_summary['CTR']:.3%}")
         with col2:
             st.metric("CPC", f"${topic_summary['CPC']:.2f}")
         with col3:
-            if has_conversions:
-                st.metric("CVR", f"{topic_summary['CVR']:.3%}")
+            if topic_summary.get("online_order_rate", 0) > 0:
+                st.metric("CVR (Online Order)", f"{topic_summary['online_order_rate']:.3%}")
             else:
-                st.metric("CVR", "N/A")
+                st.metric("CVR (Online Order)", "N/A")
         with col4:
-            if has_conversions:
-                st.metric("CPA", f"${topic_summary['CPA']:.2f}")
+            if topic_summary.get("reservation_rate", 0) > 0:
+                st.metric("CVR (Reservation)", f"{topic_summary['reservation_rate']:.3%}")
             else:
-                st.metric("CPA", "N/A")
-        with col5:
-            if 'ROAS' in topic_summary:
-                st.metric("ROAS", f"{topic_summary['ROAS']:.2f}x")
-            else:
-                st.metric("ROAS", "N/A")
+                st.metric("CVR (Reservation)", "N/A")
+        
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(
+                "Blended ROAS (All Revenue)",
+                f"{topic_summary['total_roas']:.2f}x" if topic_summary["spend"] > 0 else "N/A",
+            )
+        with col2:
+            st.metric(
+                "Total Estimated Revenue",
+                f"${topic_summary['total_revenue_est']:,.0f}",
+            )
 
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 1, 2])
@@ -2134,17 +2189,11 @@ def main():
         st.markdown("---")
         st.subheader("Fatigue Analysis")
 
-        fatigue_kpi_options = ['CTR', 'CPC']
-        if has_conversions:
-            fatigue_kpi_options.append('CVR')
-        if 'purchase_rate' in topic_summary:
-            fatigue_kpi_options.append('purchase_rate')
-        if 'add_to_cart_rate' in topic_summary:
-            fatigue_kpi_options.append('add_to_cart_rate')
-        if 'view_content_rate' in topic_summary:
-            fatigue_kpi_options.append('view_content_rate')
-        if 'page_view_rate' in topic_summary:
-            fatigue_kpi_options.append('page_view_rate')
+        fatigue_kpi_options = ["CTR", "CPC"]
+        if "online_order_rate" in topic_daily.columns:
+            fatigue_kpi_options.append("online_order_rate")
+        if "reservation_rate" in topic_daily.columns:
+            fatigue_kpi_options.append("reservation_rate")
 
         fatigue_kpi = st.selectbox(
             "Select KPI for Fatigue Analysis",

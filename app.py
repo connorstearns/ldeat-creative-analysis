@@ -56,6 +56,88 @@ def load_google_sheet_to_df():
     data = ws.get_all_records()
     return pd.DataFrame(data)
 
+@st.cache_data
+def load_campaign_plan_df():
+    """
+    Optional: load planned spend per campaign/topic from a second worksheet
+    in the same Google Sheet.
+
+    Expected worksheet name (first that exists): 
+      - 'Campaign Plan'  or  'Expected Spend'
+
+    Expected columns (case-insensitive):
+      - topic / campaign / campaign_name   -> mapped to 'topic'
+      - planned_spend / plan_spend / budget / expected_spend -> mapped to 'planned_spend'
+    """
+    try:
+        sa = st.secrets["gcp_service_account"]
+        sheet_url = st.secrets["google"]["sheet_url"]
+
+        creds = Credentials.from_service_account_info(sa).with_scopes(SCOPES)
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_url(sheet_url)
+
+        # Try a couple of reasonable worksheet names
+        try:
+            ws = sh.worksheet("Campaign Plan")
+        except gspread.WorksheetNotFound:
+            try:
+                ws = sh.worksheet("Expected Spend")
+            except gspread.WorksheetNotFound:
+                return None  # no plan sheet configured
+
+        data = ws.get_all_records()
+        if not data:
+            return None
+
+        df_plan = pd.DataFrame(data)
+
+        # --- normalize columns ---
+        cols_lower = {c.lower(): c for c in df_plan.columns}
+
+        topic_col = None
+        for cand in ["topic", "campaign", "campaign_name"]:
+            if cand in cols_lower:
+                topic_col = cols_lower[cand]
+                break
+
+        planned_col = None
+        for cand in ["planned_spend", "plan_spend", "budget", "expected_spend"]:
+            if cand in cols_lower:
+                planned_col = cols_lower[cand]
+                break
+
+        if topic_col is None or planned_col is None:
+            # sheet exists but doesn't have the right columns
+            return None
+
+        df_plan = df_plan.rename(
+            columns={
+                topic_col: "topic",
+                planned_col: "planned_spend",
+            }
+        )
+
+        # clean numeric planned_spend
+        df_plan["planned_spend"] = (
+            df_plan["planned_spend"]
+            .astype(str)
+            .str.replace(r"[\$,]", "", regex=True)
+            .str.strip()
+        )
+        df_plan["planned_spend"] = pd.to_numeric(
+            df_plan["planned_spend"], errors="coerce"
+        ).fillna(0.0)
+
+        # key for robust joining
+        df_plan["topic_key"] = df_plan["topic"].astype(str).str.strip().str.lower()
+
+        return df_plan
+
+    except Exception as e:
+        st.warning(f"⚠️ Unable to load campaign plan sheet: {e}")
+        return None
+
 RATE_METRICS = [
     "CTR",
     "CVR",
@@ -972,6 +1054,207 @@ def compute_platform_metrics_lazy_dog(df: pd.DataFrame, avg_res_check: float = 6
 
     return plat
 
+def render_campaign_overview_tab(filtered_df: pd.DataFrame, campaign_plan_df: pd.DataFrame | None = None):
+    """
+    New tab:
+      • Pie: spend by Business Objective
+      • Pie: spend by Campaign Format
+      • Bar: campaign (topic) spend
+      • Optional pacing view vs planned spend from campaign_plan_df
+    """
+    st.header("📊 Campaign Overview")
+
+    if filtered_df.empty:
+        st.info("No data available for the current filter selection.")
+        return
+
+    # ------------------------------------------------------------------
+    # 1) PIE CHARTS – spend by Business Objective & Campaign Format
+    # ------------------------------------------------------------------
+    st.subheader("Spend Mix by Objective & Format")
+
+    col1, col2 = st.columns(2)
+
+    # Spend by Business Objective
+    spend_by_bo = pd.DataFrame()
+    if "business_objective" in filtered_df.columns:
+        spend_by_bo = (
+            filtered_df
+            .dropna(subset=["business_objective"])
+            .groupby("business_objective", as_index=False)["spend"]
+            .sum()
+            .sort_values("spend", ascending=False)
+        )
+
+    # Spend by Campaign Format
+    spend_by_fmt = pd.DataFrame()
+    if "campaign_format" in filtered_df.columns:
+        spend_by_fmt = (
+            filtered_df
+            .dropna(subset=["campaign_format"])
+            .groupby("campaign_format", as_index=False)["spend"]
+            .sum()
+            .sort_values("spend", ascending=False)
+        )
+
+    with col1:
+        st.markdown("**Spend by Business Objective**")
+        if spend_by_bo.empty:
+            st.write("No Business Objective data available.")
+        else:
+            fig_bo = px.pie(
+                spend_by_bo,
+                names="business_objective",
+                values="spend",
+                hole=0.4,
+            )
+            fig_bo.update_traces(textposition="inside", textinfo="percent+label")
+            fig_bo.update_layout(margin=dict(l=0, r=0, t=40, b=0))
+            st.plotly_chart(fig_bo, use_container_width=True)
+
+    with col2:
+        st.markdown("**Spend by Campaign Format**")
+        if spend_by_fmt.empty:
+            st.write("No Campaign Format data available.")
+        else:
+            fig_fmt = px.pie(
+                spend_by_fmt,
+                names="campaign_format",
+                values="spend",
+                hole=0.4,
+            )
+            fig_fmt.update_traces(textposition="inside", textinfo="percent+label")
+            fig_fmt.update_layout(margin=dict(l=0, r=0, t=40, b=0))
+            st.plotly_chart(fig_fmt, use_container_width=True)
+
+    st.markdown("---")
+
+    # ------------------------------------------------------------------
+    # 2) Campaign spend by Campaign Name (fallback: Topic)
+    # ------------------------------------------------------------------
+    st.subheader("Campaign Spend")
+
+    # pick dimension
+    camp_dim = "Campaign Name" if "Campaign Name" in filtered_df.columns else "topic"
+
+    campaign_spend = (
+        filtered_df
+        .dropna(subset=[camp_dim])
+        .groupby(camp_dim, as_index=False)["spend"]
+        .sum()
+        .sort_values("spend", ascending=False)
+    )
+
+    if campaign_spend.empty:
+        st.info("No campaign-level spend available with current filters.")
+        return
+
+    TOP_N = 25
+    campaign_spend_top = campaign_spend.head(TOP_N)
+
+    st.caption(f"Showing top {TOP_N} campaigns by spend")
+
+    fig_camp = px.bar(
+        campaign_spend_top,
+        x=camp_dim,
+        y="spend",
+        title="Actual Spend by Campaign",
+    )
+    fig_camp.update_layout(
+        xaxis_title="Campaign",
+        yaxis_title="Spend",
+        xaxis_tickangle=-45,
+        margin=dict(l=0, r=0, t=40, b=80),
+    )
+    fig_camp.update_yaxes(tickprefix="$")
+    st.plotly_chart(fig_camp, use_container_width=True)
+
+    st.markdown("---")
+ 
+
+    # ------------------------------------------------------------------
+    # 3) Expected vs Actual spend pacing (from Campaign Plan sheet)
+    # ------------------------------------------------------------------
+    st.subheader("Expected vs Actual Spend by Campaign")
+
+    if campaign_plan_df is None:
+        st.info(
+            """
+            No Campaign Plan loaded.
+            Create a worksheet named 'Campaign Plan' with columns:
+            - Campaign Name
+            - Planned Spend
+            """
+        )
+        st.dataframe(campaign_spend, use_container_width=True)
+        return
+
+    # column harmonization
+    plan = campaign_plan_df.copy()
+    plan_cols = {c.lower(): c for c in plan.columns}
+
+    plan_name_col = None
+    for c in ["campaign name", "campaign", "campaign_name", "topic"]:
+        if c in plan_cols:
+            plan_name_col = plan_cols[c]
+            break
+
+    plan_spend_col = None
+    for c in ["planned spend", "budget", "planned_spend"]:
+        if c in plan_cols:
+            plan_spend_col = plan_cols[c]
+            break
+
+    if plan_name_col is None or plan_spend_col is None:
+        st.error("Campaign Plan sheet missing required column names.")
+        st.dataframe(campaign_spend, use_container_width=True)
+        return
+
+    # clean and merge
+    plan.rename(
+        columns={plan_name_col: "campaign_name", plan_spend_col:"planned_spend"},
+        inplace=True
+    )
+
+    plan["campaign_name"] = plan["campaign_name"].astype(str).str.strip().str.lower()
+    campaign_spend["campaign_name"] = (
+        campaign_spend[camp_dim].astype(str).str.strip().str.lower()
+    )
+
+    pacing = campaign_spend.merge(plan, on="campaign_name", how="left")
+
+    pacing["planned_spend"] = pacing["planned_spend"].fillna(0.0)
+    pacing["pacing"] = np.where(
+        pacing["planned_spend"] > 0,
+        pacing["spend"] / pacing["planned_spend"],
+        np.nan,
+    )
+    pacing["remaining"] = pacing["planned_spend"] - pacing["spend"]
+
+    # bar comparing actual vs planned
+    has_plan = pacing["planned_spend"] > 0
+    if has_plan.any():
+        view = pacing.loc[has_plan].sort_values("planned_spend", ascending=False).head(TOP_N)
+        melted = view.melt(
+            id_vars=["campaign_name"],
+            value_vars=["spend","planned_spend"],
+            var_name="type",
+            value_name="value"
+        )
+
+        fig = px.bar(
+            melted,
+            x="campaign_name",
+            y="value",
+            color="type",
+            barmode="group",
+            title="Actual vs Planned Spend by Campaign",
+        )
+        fig.update_yaxes(tickprefix="$")
+        fig.update_layout(xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
+
+
 def build_leaderboard(creative_metrics):
     """
     Build leaderboard with journey-aware performance scores
@@ -1333,7 +1616,20 @@ def main():
 
     st.sidebar.markdown("---")
 
+    # --- LOAD CAMPAIGN PLAN GOOGLE SHEET ---
+    filtered_df = apply_global_filters(df, filters)
 
+    if len(filtered_df) == 0:
+        st.warning("⚠️ No data matches the current filters. Please adjust your filter settings.")
+        st.stop()
+
+    st.sidebar.info(f"📊 {len(filtered_df):,} rows after filtering")
+
+    # NEW: optional campaign plan (for pacing)
+    campaign_plan_df = load_campaign_plan_df()
+
+    
+    # --- FILTER LOGIC ---
     st.sidebar.subheader("🔍 Filters")
 
     # make sure we're using only valid dates
@@ -2039,184 +2335,13 @@ def main():
             st.plotly_chart(fig_pf, width="stretch")
     # ---------- END PLATFORM COMPARISON ----------
 
-    # ---------- CREATIVE LEADERBOARD TAB ----------
+        # ---------- CAMPAIGN OVERVIEW TAB (NEW) ----------
     with tab3:
-        st.header("🏆 Creative Leaderboard")
+        render_campaign_overview_tab(filtered_df, campaign_plan_df)
+    # ---------- END CAMPAIGN OVERVIEW ----------
 
-        creative_metrics = compute_aggregated_creative_metrics(filtered_df)
-        leaderboard = build_leaderboard(creative_metrics)
 
-        st.info("💡 Scoring is journey-aware: **Engagement** creatives are scored primarily on CTR/CPC, **Intent** creatives on micro-conversion rates, and **Conversion** creatives on CVR/CPA.")
-        
-        journey_role_filter = st.selectbox(
-            "Filter by Journey Role",
-            options=["All", "Engagement", "Intent", "Conversion"],
-            index=0,
-            help="Filter creatives by their funnel position"
-        )
-        
-        if journey_role_filter != "All":
-            leaderboard = leaderboard[leaderboard['journey_role'] == journey_role_filter]
-
-        st.subheader(f"Top Performing Creatives ({len(leaderboard)} total)")
-
-        display_cols = ['creative_name', 'journey_role', 'platform', 'campaign_name']
-
-        if "campaign_format" in leaderboard.columns:
-            display_cols.append("campaign_format")
-
-        if 'topic' in leaderboard.columns:
-            display_cols.append('topic')
-
-        if 'objective' in leaderboard.columns:
-            display_cols.append('objective')
-
-        if 'format' in leaderboard.columns:
-            display_cols.append('format')
-
-        display_cols.extend(['impressions', 'clicks', 'spend', 'CTR', 'CPC', 'CPM'])
-
-        if has_conversions and show_conversion_metrics:
-            display_cols.extend(['conversions', 'CVR', 'CPA'])
-
-        if 'revenue' in leaderboard.columns and show_conversion_metrics:
-            display_cols.extend(['ROAS'])
-
-        if 'purchases' in leaderboard.columns and show_conversion_metrics:
-            display_cols.extend(['purchases', 'purchase_rate', 'cost_per_purchase'])
-
-        if 'add_to_carts' in leaderboard.columns and show_conversion_metrics:
-            display_cols.extend(['add_to_carts', 'add_to_cart_rate', 'cost_per_add_to_cart'])
-
-        if 'view_content' in leaderboard.columns and show_conversion_metrics:
-            display_cols.extend(['view_content', 'view_content_rate', 'cost_per_view_content'])
-
-        if 'page_views' in leaderboard.columns and show_conversion_metrics:
-            display_cols.extend(['page_views', 'page_view_rate', 'cost_per_page_view'])
-
-        display_cols.extend(['age_in_days_max', 'total_days_active', 'score'])
-
-        display_df = leaderboard[display_cols].copy()
-
-        display_df['CTR'] = display_df['CTR'] * 100
-        if 'CVR' in display_df.columns:
-            display_df['CVR'] = display_df['CVR'] * 100
-        if 'purchase_rate' in display_df.columns:
-            display_df['purchase_rate'] = display_df['purchase_rate'] * 100
-        if 'add_to_cart_rate' in display_df.columns:
-            display_df['add_to_cart_rate'] = display_df['add_to_cart_rate'] * 100
-        if 'view_content_rate' in display_df.columns:
-            display_df['view_content_rate'] = display_df['view_content_rate'] * 100
-        if 'page_view_rate' in display_df.columns:
-            display_df['page_view_rate'] = display_df['page_view_rate'] * 100
-
-        column_config = {
-            'journey_role': st.column_config.TextColumn('Journey Role'),
-            'CTR': st.column_config.NumberColumn('CTR', format="%.3f %%"),
-            'CPC': st.column_config.NumberColumn('CPC', format="$ %.2f"),
-            'CPM': st.column_config.NumberColumn('CPM', format="$ %.2f"),
-            'score': st.column_config.NumberColumn('Score', format="%.3f"),
-            'impressions': st.column_config.NumberColumn('Impressions', format="%,d"),
-            'clicks': st.column_config.NumberColumn('Clicks', format="%,d"),
-            'spend': st.column_config.NumberColumn('Spend', format="$ %,.2f"),
-        }
-
-        if 'CVR' in display_df.columns:
-            column_config['CVR'] = st.column_config.NumberColumn('CVR', format="%.3f %%")
-        if 'CPA' in display_df.columns:
-            column_config['CPA'] = st.column_config.NumberColumn('CPA', format="$ %.2f")
-        if 'ROAS' in display_df.columns:
-            column_config['ROAS'] = st.column_config.NumberColumn('ROAS', format="%.2f x")
-
-        if 'conversions' in display_df.columns:
-            column_config['conversions'] = st.column_config.NumberColumn('Conversions', format="%,d")
-
-        if 'purchases' in display_df.columns:
-            column_config['purchases'] = st.column_config.NumberColumn('Purchases', format="%,d")
-        if 'purchase_rate' in display_df.columns:
-            column_config['purchase_rate'] = st.column_config.NumberColumn('Purchase Rate', format="%.3f %%")
-        if 'cost_per_purchase' in display_df.columns:
-            column_config['cost_per_purchase'] = st.column_config.NumberColumn('Cost/Purchase', format="$ %.2f")
-
-        if 'add_to_carts' in display_df.columns:
-            column_config['add_to_carts'] = st.column_config.NumberColumn('Add to Carts', format="%,d")
-        if 'add_to_cart_rate' in display_df.columns:
-            column_config['add_to_cart_rate'] = st.column_config.NumberColumn('Add to Cart Rate', format="%.3f %%")
-        if 'cost_per_add_to_cart' in display_df.columns:
-            column_config['cost_per_add_to_cart'] = st.column_config.NumberColumn('Cost/Add to Cart', format="$ %.2f")
-
-        if 'view_content' in display_df.columns:
-            column_config['view_content'] = st.column_config.NumberColumn('View Content', format="%,d")
-        if 'view_content_rate' in display_df.columns:
-            column_config['view_content_rate'] = st.column_config.NumberColumn('View Content Rate', format="%.3f %%")
-        if 'cost_per_view_content' in display_df.columns:
-            column_config['cost_per_view_content'] = st.column_config.NumberColumn('Cost/View Content', format="$ %.2f")
-
-        if 'page_views' in display_df.columns:
-            column_config['page_views'] = st.column_config.NumberColumn('Page Views', format="%,d")
-        if 'page_view_rate' in display_df.columns:
-            column_config['page_view_rate'] = st.column_config.NumberColumn('Page View Rate', format="%.3f %%")
-        if 'cost_per_page_view' in display_df.columns:
-            column_config['cost_per_page_view'] = st.column_config.NumberColumn('Cost/Page View', format="$ %.2f")
-
-        # --- NEW: pick a creative to sync with Detail tab ---
-        if "selected_topic" not in st.session_state:
-            first_row = leaderboard.iloc[0]
-            st.session_state["selected_topic"] = first_row.get("topic", first_row["creative_name"])
-        
-        selected_from_leaderboard = st.selectbox(
-            "Select a creative to analyze in the Topic Detail & Fatigue tab",
-            options=leaderboard["creative_name"].tolist(),
-            key="leaderboard_creative_select",
-        )
-        
-        # map creative -> topic (fallback to creative name if no topic column)
-        if "topic" in leaderboard.columns:
-            topic_for_creative = (
-                leaderboard.loc[leaderboard["creative_name"] == selected_from_leaderboard, "topic"]
-                .iloc[0]
-            )
-        else:
-            topic_for_creative = selected_from_leaderboard
-        
-        st.session_state["selected_topic"] = topic_for_creative
-
-        st.dataframe(
-            format_currency_columns(display_df.copy()),
-            width="stretch",
-            height=400,
-            column_config=column_config
-        )
-        
-        csv_leaderboard = display_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "⬇️ Download Leaderboard CSV",
-            data=csv_leaderboard,
-            file_name="creative_leaderboard.csv",
-            mime="text/csv"
-        )
-
-        st.markdown("---")
-        st.subheader("Creative Performance Scatter Plot")
-
-        y_axis_metric = 'CVR' if has_conversions and 'CVR' in leaderboard.columns else 'CTR'
-
-        fig = px.scatter(
-            leaderboard,
-            x='CPC',
-            y=y_axis_metric,
-            size='spend',
-            color='score',
-            hover_data=['creative_name', 'campaign_name', 'platform', 'impressions', 'clicks'],
-            title=f"Creative Performance: {y_axis_metric} vs CPC (size = spend)",
-            labels={'CPC': 'Cost Per Click ($)', y_axis_metric: y_axis_metric},
-            color_continuous_scale='RdYlGn'
-        )
-        st.plotly_chart(fig, width="stretch")
-
-        # ---------- END PLATFORM COMPARISON ----------
-
-        # ---------- CREATIVE DETAIL & FATIGUE ----------
+    # ---------- CREATIVE DETAIL & FATIGUE ----------
     with tab4:
         st.header("📉 Creative Detail & Fatigue Analysis")
 

@@ -1154,15 +1154,15 @@ def main():
     layout="wide"
 )
     # SET LOGO & TITLE
-        logo_path = "lazy_dog_logo.png"  # file is in repo root
-        
-        with st.sidebar:
-            st.image(logo_path, use_column_width=True)
-            st.markdown(
-                "<h3 style='margin-top:10px; margin-bottom:0;'>Media Performance Tracker</h3>",
-                unsafe_allow_html=True,
-            )
-            st.markdown("---")
+    logo_path = "lazy_dog_logo.png"  # file is in repo root
+    
+    with st.sidebar:
+        st.image(logo_path, use_column_width=True)
+        st.markdown(
+            "<h3 style='margin-top:10px; margin-bottom:0;'>Media Performance Tracker</h3>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("---")
     
     # 👇 RUN PASSWORD CHECK HERE!
     if not check_password():

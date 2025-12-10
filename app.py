@@ -1003,10 +1003,10 @@ def compute_fatigue_metrics_for_creative(df, creative_name):
     """
     Compute fatigue metrics for a specific creative.
     """
-    creative_data = df[df['creative_name'] == creative_name].copy()
-    creative_data = creative_data.sort_values('date')
+    topic_data = df[df['creative_name'] == creative_name].copy()
+    topic_data = topic_data.sort_values('date')
 
-    return creative_data
+    return topic_data
 
 
 def fit_simple_adjusted_model(df, outcome_metric):
@@ -1973,17 +1973,26 @@ def main():
             column_config['cost_per_page_view'] = st.column_config.NumberColumn('Cost/Page View', format="$ %.2f")
 
         # --- NEW: pick a creative to sync with Detail tab ---
-        if 'selected_creative' not in st.session_state:
-            st.session_state['selected_creative'] = leaderboard.iloc[0]['creative_name']
-
+        if "selected_topic" not in st.session_state:
+            first_row = leaderboard.iloc[0]
+            st.session_state["selected_topic"] = first_row.get("topic", first_row["creative_name"])
+        
         selected_from_leaderboard = st.selectbox(
-            "Select a creative to analyze in the Detail & Fatigue tab",
-            options=leaderboard['creative_name'].tolist(),
-            index=0 if st.session_state['selected_creative'] not in leaderboard['creative_name'].tolist()
-                   else leaderboard['creative_name'].tolist().index(st.session_state['selected_creative']),
-            key="leaderboard_creative_select"
+            "Select a creative to analyze in the Topic Detail & Fatigue tab",
+            options=leaderboard["creative_name"].tolist(),
+            key="leaderboard_creative_select",
         )
-        st.session_state['selected_creative'] = selected_from_leaderboard
+        
+        # map creative -> topic (fallback to creative name if no topic column)
+        if "topic" in leaderboard.columns:
+            topic_for_creative = (
+                leaderboard.loc[leaderboard["creative_name"] == selected_from_leaderboard, "topic"]
+                .iloc[0]
+            )
+        else:
+            topic_for_creative = selected_from_leaderboard
+        
+        st.session_state["selected_topic"] = topic_for_creative
 
         st.dataframe(display_df, width="stretch", height=400, column_config=column_config)
 
@@ -2019,27 +2028,49 @@ def main():
     with tab4:
         st.header("📉 Creative Detail & Fatigue Analysis")
 
-        creative_list = sorted(filtered_df['creative_name'].unique().tolist())
-        if len(creative_list) == 0:
-            st.warning("No creatives available with current filters.")
+        topic_list = sorted(filtered_df['topic'].dropna().unique().tolist())
+        if len(topic_list) == 0:
+            st.warning("No topics available with current filters.")
             st.stop()
 
         # default to last selected creative if available
-        default_index = 0
-        if 'selected_creative' in st.session_state and st.session_state['selected_creative'] in creative_list:
-            default_index = creative_list.index(st.session_state['selected_creative'])
+        default_topic = st.session_state.get("selected_topic", topic_list[0])
+        if default_topic not in topic_list:
+            default_topic = topic_list[0]
 
-        selected_creative = st.selectbox(
-            "Select Creative to Analyze",
-            options=creative_list,
-            index=default_index,
-            key="selected_creative"  # share key with session_state
+        selected_topic = st.selectbox(
+            "Select Topic to Analyze",
+            options=topic_list,
+            key="selected_topic"
         )
 
-        creative_data = compute_fatigue_metrics_for_creative(filtered_df, selected_creative)
-        creative_summary = compute_aggregated_creative_metrics(
-            filtered_df[filtered_df['creative_name'] == selected_creative]
-        ).iloc[0]
+        # all rows for this topic
+        topic_data = filtered_df[filtered_df["topic"] == selected_topic].copy()
+        topic_data = topic_data.sort_values("date")
+        
+        # aggregate to topic level using creative metrics, then roll up
+        topic_creative_metrics = compute_aggregated_creative_metrics(
+            filtered_df[filtered_df["topic"] == selected_topic]
+        )
+        
+        topic_summary = (
+            topic_creative_metrics
+            .assign(topic=selected_topic)  # ensure column exists
+            .groupby("topic")
+            .agg(
+                platform=("platform", lambda x: ", ".join(sorted(x.unique()))),
+                campaign_name=("campaign_name", lambda x: ", ".join(sorted(x.unique())[:3]) + ("…" if x.nunique() > 3 else "")),
+                spend=("spend", "sum"),
+                impressions=("impressions", "sum"),
+                clicks=("clicks", "sum"),
+                CTR=("CTR", "mean"),
+                CPC=("CPC", "mean"),
+                CPM=("CPM", "mean"),
+                total_days_active=("total_days_active", "max"),
+            )
+            .reset_index()
+            .iloc[0]
+        )
 
         st.markdown("---")
         st.subheader("Creative Summary")
@@ -2047,51 +2078,51 @@ def main():
         col1, col2, col3, col4, col5 = st.columns(5)
 
         with col1:
-            st.metric("Platform", creative_summary['platform'])
+            st.metric("Platform", topic_summary['platform'])
         with col2:
-            st.metric("Campaign", creative_summary['campaign_name'])
+            st.metric("Campaign", topic_summary['campaign_name'])
         with col3:
-            st.metric("Total Spend", f"${creative_summary['spend']:,.2f}")
+            st.metric("Total Spend", f"${topic_summary['spend']:,.2f}")
         with col4:
-            st.metric("Impressions", f"{creative_summary['impressions']:,.0f}")
+            st.metric("Impressions", f"{topic_summary['impressions']:,.0f}")
         with col5:
-            st.metric("Days Active", f"{creative_summary['total_days_active']:.0f}")
+            st.metric("Days Active", f"{topic_summary['total_days_active']:.0f}")
 
         col1, col2, col3, col4, col5 = st.columns(5)
 
         with col1:
-            st.metric("CTR", f"{creative_summary['CTR']:.3%}")
+            st.metric("CTR", f"{topic_summary['CTR']:.3%}")
         with col2:
-            st.metric("CPC", f"${creative_summary['CPC']:.2f}")
+            st.metric("CPC", f"${topic_summary['CPC']:.2f}")
         with col3:
             if has_conversions:
-                st.metric("CVR", f"{creative_summary['CVR']:.3%}")
+                st.metric("CVR", f"{topic_summary['CVR']:.3%}")
             else:
                 st.metric("CVR", "N/A")
         with col4:
             if has_conversions:
-                st.metric("CPA", f"${creative_summary['CPA']:.2f}")
+                st.metric("CPA", f"${topic_summary['CPA']:.2f}")
             else:
                 st.metric("CPA", "N/A")
         with col5:
-            if 'ROAS' in creative_summary:
-                st.metric("ROAS", f"{creative_summary['ROAS']:.2f}x")
+            if 'ROAS' in topic_summary:
+                st.metric("ROAS", f"{topic_summary['ROAS']:.2f}x")
             else:
                 st.metric("ROAS", "N/A")
 
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
-            journey_role = creative_summary.get('journey_role', 'Engagement')
+            journey_role = topic_summary.get('journey_role', 'Engagement')
             role_emoji = {'Engagement': '📢', 'Intent': '🛒', 'Conversion': '💰'}.get(journey_role, '📊')
             st.metric("Journey Role", f"{role_emoji} {journey_role}")
         
-        if 'objective' in creative_summary:
+        if 'objective' in topic_summary:
             with col2:
-                st.metric("Objective", creative_summary['objective'])
-        if 'objective_type' in creative_summary:
+                st.metric("Objective", topic_summary['objective'])
+        if 'objective_type' in topic_summary:
             with col3:
-                st.metric("Objective Type", creative_summary['objective_type'])
+                st.metric("Objective Type", topic_summary['objective_type'])
         
         if journey_role == "Engagement":
             st.info("💡 **Engagement Creative**: This creative excels at driving clicks and attention. Evaluate it primarily on CTR/CPC performance. Don't over-judge it on final CPA - its role is to generate interest.")
@@ -2106,13 +2137,13 @@ def main():
         fatigue_kpi_options = ['CTR', 'CPC']
         if has_conversions:
             fatigue_kpi_options.append('CVR')
-        if 'purchase_rate' in creative_summary:
+        if 'purchase_rate' in topic_summary:
             fatigue_kpi_options.append('purchase_rate')
-        if 'add_to_cart_rate' in creative_summary:
+        if 'add_to_cart_rate' in topic_summary:
             fatigue_kpi_options.append('add_to_cart_rate')
-        if 'view_content_rate' in creative_summary:
+        if 'view_content_rate' in topic_summary:
             fatigue_kpi_options.append('view_content_rate')
-        if 'page_view_rate' in creative_summary:
+        if 'page_view_rate' in topic_summary:
             fatigue_kpi_options.append('page_view_rate')
 
         fatigue_kpi = st.selectbox(
@@ -2127,9 +2158,9 @@ def main():
             index=0
         )
 
-        if len(creative_data) >= 3:
-            age_days = creative_data['age_in_days'].values
-            kpi_values = creative_data[fatigue_kpi].values
+        if len(topic_data) >= 3:
+            age_days = topic_data['age_in_days'].values
+            kpi_values = topic_data[fatigue_kpi].values
 
             valid_indices = ~np.isnan(kpi_values) & ~np.isinf(kpi_values)
             age_days_clean = age_days[valid_indices]
@@ -2144,8 +2175,8 @@ def main():
 
                 # primary KPI
                 fig.add_trace(go.Scatter(
-                    x=creative_data['date'],
-                    y=creative_data[fatigue_kpi],
+                    x=topic_data['date'],
+                    y=topic_data[fatigue_kpi],
                     mode='lines+markers',
                     name=f'Actual {fatigue_kpi}',
                     line=dict(width=2),
@@ -2155,7 +2186,7 @@ def main():
 
                 # trend line for primary
                 fig.add_trace(go.Scatter(
-                    x=creative_data['date'].values[valid_indices],
+                    x=topic_data['date'].values[valid_indices],
                     y=trend_line,
                     mode='lines',
                     name='Trend Line',
@@ -2166,8 +2197,8 @@ def main():
                 # optional secondary KPI
                 if secondary_kpi != "None":
                     fig.add_trace(go.Scatter(
-                        x=creative_data['date'],
-                        y=creative_data[secondary_kpi],
+                        x=topic_data['date'],
+                        y=topic_data[secondary_kpi],
                         mode='lines+markers',
                         name=f'{secondary_kpi}',
                         line=dict(width=2, dash='dot'),
@@ -2189,7 +2220,7 @@ def main():
                     )
 
                 fig.update_layout(
-                    title=f"{fatigue_kpi} Over Time for {selected_creative}",
+                    title=f"{fatigue_kpi} Over Time for {selected_topic}",
                     xaxis_title="Date",
                     hovermode='x unified'
                 )
@@ -2210,8 +2241,8 @@ def main():
                 min_days_for_fatigue = 7
                 min_impressions_for_fatigue = 10000
 
-                total_impressions = creative_summary['impressions']
-                total_days = creative_summary['total_days_active']
+                total_impressions = topic_summary['impressions']
+                total_days = topic_summary['total_days_active']
 
                 is_fatiguing = (
                     slope < fatigue_threshold and
@@ -2231,20 +2262,20 @@ def main():
         st.markdown("---")
         st.subheader(f"{fatigue_kpi} vs Cumulative Impressions")
 
-        if len(creative_data) >= 3:
+        if len(topic_data) >= 3:
             fig = go.Figure()
 
             fig.add_trace(go.Scatter(
-                x=creative_data['cumulative_impressions'],
-                y=creative_data[fatigue_kpi],
+                x=topic_data['cumulative_impressions'],
+                y=topic_data[fatigue_kpi],
                 mode='lines+markers',
                 name=f'{fatigue_kpi}',
                 line=dict(color='green', width=2),
                 marker=dict(size=6)
             ))
 
-            cum_impr = creative_data['cumulative_impressions'].values
-            kpi_vals = creative_data[fatigue_kpi].values
+            cum_impr = topic_data['cumulative_impressions'].values
+            kpi_vals = topic_data[fatigue_kpi].values
 
             valid_idx = ~np.isnan(kpi_vals) & ~np.isinf(kpi_vals)
             if np.sum(valid_idx) >= 3:

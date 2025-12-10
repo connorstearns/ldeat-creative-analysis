@@ -147,6 +147,40 @@ def classify_business_objective(campaign_name: str) -> str:
 
     return "Other"
 
+def classify_campaign_format(campaign_name: str) -> str:
+    """
+    Derive a campaign format from campaign_name.
+    Logic:
+        NB        -> Search
+        PMAX      -> Performance Max
+        YT        -> YouTube
+        Display   -> Display
+        CTV       -> CTV
+        DOOH      -> DOOH
+        Meta/TT   -> Social
+    """
+    if not isinstance(campaign_name, str):
+        return "Other"
+
+    name = campaign_name.upper()
+
+    if "DOOH" in name:
+        return "DOOH"
+    if "CTV" in name:
+        return "CTV"
+    if "DISPLAY" in name:
+        return "Display"
+    if "PMAX" in name:
+        return "Performance Max"
+    if "NB" in name:
+        return "Search"
+    if "YT" in name or "YOUTUBE" in name:
+        return "YouTube"
+    if "META" in name or " TT" in name or name.startswith("TT") or "TIKTOK" in name:
+        return "Social"
+
+    return "Other"
+
 import numpy as np
 
 def classify_journey_role(
@@ -467,6 +501,8 @@ def load_and_prepare_data(df_raw: pd.DataFrame):
         # --- 7) Sort, age, cumulative impressions, objective classification ---
         df = df.sort_values(["creative_name", "date"])
 
+        df["campaign_format"] = df["campaign_name"].apply(classify_campaign_format)
+
         df["campaign_type"] = df["creative_name"].apply(classify_campaign_type)
 
         df["business_objective"] = df["campaign_name"].apply(classify_business_objective)
@@ -506,8 +542,14 @@ def apply_global_filters(df, filters):
     if filters['platforms']:
         filtered_df = filtered_df[filtered_df['platform'].isin(filters['platforms'])]
 
-    if filters['campaigns']:
-        filtered_df = filtered_df[filtered_df['campaign_name'].isin(filters['campaigns'])]
+    # --- Campaign Format filter ---
+    if filters.get('campaign_formats') is not None and 'campaign_format' in filtered_df.columns:
+        all_formats_in_data = set(df['campaign_format'].dropna().unique())
+        if set(filters['campaign_formats']) != all_formats_in_data:
+            filtered_df = filtered_df[
+                filtered_df['campaign_format'].isin(filters['campaign_formats'])
+            ]
+
 
     if filters.get('business_objectives') is not None and 'business_objective' in filtered_df.columns:
         all_biz_obj_in_data = set(df['business_objective'].dropna().unique())
@@ -607,6 +649,9 @@ def compute_aggregated_creative_metrics(df):
 
     if 'campaign_type' in df.columns:
         agg_dict['campaign_type'] = 'first'
+
+    if 'campaign_format' in df.columns:
+        agg_dict['campaign_format'] = 'first'
 
     if 'topic' in df.columns:
         agg_dict['topic'] = 'first'
@@ -1421,12 +1466,17 @@ def main():
         default=all_platforms
     )
 
-    all_campaigns = sorted(df['campaign_name'].unique().tolist())
-    selected_campaigns = st.sidebar.multiselect(
-        "Campaign",
-        options=all_campaigns,
-        default=all_campaigns
-    )
+    selected_campaign_formats = None
+    if "campaign_format" in df.columns:
+        all_campaign_formats = sorted(df["campaign_format"].dropna().unique().tolist())
+    
+        selected_campaign_formats = st.sidebar.multiselect(
+            "Campaign Format",
+            options=all_campaign_formats,
+            default=all_campaign_formats,
+            help="Search, Performance Max, YouTube, Display, CTV, DOOH, Social, Other"
+        )
+
 
     # NEW: Business Objective filter
     selected_business_objectives = None
@@ -1468,7 +1518,7 @@ def main():
         )
         if all_campaign_types:
             selected_campaign_types = st.sidebar.multiselect(
-                "Campaign Type",
+                "Campaign Objective",
                 options=all_campaign_types,
                 default=all_campaign_types,
                 help="Derived from creative names (Awareness, Traffic, Conversion, Other).",
@@ -1559,7 +1609,7 @@ def main():
     filters = {
         'date_range': date_range_filter,
         'platforms': selected_platforms if selected_platforms else all_platforms,
-        'campaigns': selected_campaigns if selected_campaigns else all_campaigns,
+        'campaign_formats': selected_campaign_formats if selected_campaign_formats else None,
         'business_objectives': selected_business_objectives if selected_business_objectives else None, 
         'objectives': selected_objectives if selected_objectives else None,
         'objective_type': selected_objective_type,
@@ -1998,6 +2048,9 @@ def main():
         st.subheader(f"Top Performing Creatives ({len(leaderboard)} total)")
 
         display_cols = ['creative_name', 'journey_role', 'platform', 'campaign_name']
+
+        if "campaign_format" in leaderboard.columns:
+            display_cols.append("campaign_format")
 
         if 'topic' in leaderboard.columns:
             display_cols.append('topic')

@@ -1592,6 +1592,11 @@ def main():
     
         st.markdown("<hr style='margin-top: 0px; margin-bottom: 18px;'>", unsafe_allow_html=True)
 
+    password = st.sidebar.text_input("Password", type="password")
+    if password != st.secrets.get("APP_PASSWORD"):
+        st.warning("Please enter the correct password to continue.")
+        st.stop()
+
     # --- LOAD GOOGLE SHEET USING SERVICE ACCOUNT ---
     try:
         raw_df = load_google_sheet_to_df()

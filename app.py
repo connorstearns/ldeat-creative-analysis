@@ -2027,12 +2027,12 @@ def main():
         st.session_state["selected_topic"] = topic_for_creative
 
         st.dataframe(
-            format_currency_columns(topic_metrics.copy()),
+            format_currency_columns(display_df.copy()),
             width="stretch",
             height=400,
-            column_config=topic_column_config
+            column_config=column_config
         )
-
+        
         csv_leaderboard = display_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             "⬇️ Download Leaderboard CSV",

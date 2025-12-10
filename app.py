@@ -1613,21 +1613,6 @@ def main():
     """,
     unsafe_allow_html=True,
     )
-
-    st.sidebar.markdown("---")
-
-    # --- LOAD CAMPAIGN PLAN GOOGLE SHEET ---
-    filtered_df = apply_global_filters(df, filters)
-
-    if len(filtered_df) == 0:
-        st.warning("⚠️ No data matches the current filters. Please adjust your filter settings.")
-        st.stop()
-
-    st.sidebar.info(f"📊 {len(filtered_df):,} rows after filtering")
-
-    # NEW: optional campaign plan (for pacing)
-    campaign_plan_df = load_campaign_plan_df()
-
     
     # --- FILTER LOGIC ---
     st.sidebar.subheader("🔍 Filters")
@@ -1937,10 +1922,13 @@ def main():
 
     st.sidebar.info(f"📊 {len(filtered_df):,} rows after filtering")
 
+    # Load campaign plan after we know filters & df are good
+    campaign_plan_df = load_campaign_plan_df()
+
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📌 Executive Summary",
         "🟦 Platform Comparison",
-        "🏆 Creative Leaderboard",
+        "📊 Campaign Overview",
         "📉 Creative Detail & Fatigue",
         "🏷️ Topic Insights"
     ])

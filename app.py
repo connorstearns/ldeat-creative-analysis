@@ -1459,92 +1459,75 @@ def main():
     
     date_range_filter = (start_date, end_date)
 
-    all_platforms = sorted(df['platform'].unique().tolist())
-    selected_platforms = st.sidebar.multiselect(
-        "Platform",
-        options=all_platforms,
-        default=all_platforms
-    )
+    # --------------------------------------------------------------
+    # SIDEBAR FILTERS  (with "All" first)
+    # --------------------------------------------------------------
 
-    selected_campaign_formats = None
-    if "campaign_format" in df.columns:
-        all_campaign_formats = sorted(df["campaign_format"].dropna().unique().tolist())
+    with st.sidebar:
+        st.markdown("## Filters")
     
-        selected_campaign_formats = st.sidebar.multiselect(
+        # PLATFORM
+        platform_opts = ["All"] + sorted(df["platform"].dropna().unique().tolist())
+        selected_platforms = st.multiselect(
+            "Platform",
+            options=platform_opts,
+            default=platform_opts,
+        )
+        if "All" in selected_platforms:
+            selected_platforms = None  # means no filter
+    
+        # BUSINESS OBJECTIVE
+        business_objective_opts = ["All"] + sorted(df["business_objective"].dropna().unique().tolist())
+        selected_business_objectives = st.multiselect(
+            "Business Objective",
+            options=business_objective_opts,
+            default=business_objective_opts,
+        )
+        if "All" in selected_business_objectives:
+            selected_business_objectives = None
+    
+        # OBJECTIVE TYPE
+        objective_type_opts = ["All"] + sorted(df["objective_type"].dropna().unique().tolist())
+        selected_objective_type = st.selectbox(
+            "Objective Type",
+            options=objective_type_opts,
+            index=0,
+        )
+        if selected_objective_type == "All":
+            selected_objective_type = None
+    
+        # CAMPAIGN FORMAT
+        campaign_format_opts = ["All"] + sorted(df["campaign_format"].dropna().unique().tolist())
+        selected_campaign_formats = st.multiselect(
             "Campaign Format",
-            options=all_campaign_formats,
-            default=all_campaign_formats,
-            help="Search, Performance Max, YouTube, Display, CTV, DOOH, Social, Other"
+            options=campaign_format_opts,
+            default=campaign_format_opts,
         )
-
-
-    # NEW: Business Objective filter
-    selected_business_objectives = None
-    if "business_objective" in df.columns:
-        all_business_objectives = sorted(
-            [o for o in df["business_objective"].dropna().unique().tolist()]
+        if "All" in selected_campaign_formats:
+            selected_campaign_formats = None
+    
+        # TOPIC
+        topic_opts = ["All"] + sorted(
+            [t for t in df["topic"].dropna().unique().tolist() if t.strip() != ""]
         )
-        if all_business_objectives:
-            selected_business_objectives = st.sidebar.multiselect(
-                "Business Objective",
-                options=all_business_objectives,
-                default=all_business_objectives,
-                help="Derived from campaign names (Store Visit, Online Order, Reservation, NRO, LTO, Retention, Other)."
-            )
-
-    selected_objectives = None
-    selected_objective_type = "All"
-
-    if 'objective' in df.columns:
-        all_objectives = sorted([o for o in df['objective'].dropna().unique().tolist()])
-        selected_objectives = st.sidebar.multiselect(
-            "Objective",
-            options=all_objectives,
-            default=all_objectives
+        selected_topics = st.multiselect(
+            "Topic",
+            options=topic_opts,
+            default=topic_opts,
         )
-
-    if 'objective_type' in df.columns:
-        objective_type_options = ["All", "Awareness", "Conversion", "Other"]
-        selected_objective_type = st.sidebar.selectbox(
-            "Objective Type (Awareness vs Conversion)",
-            options=objective_type_options,
-            index=0
+        if "All" in selected_topics:
+            selected_topics = None
+    
+        # PLACEMENT
+        placement_opts = ["All"] + sorted(df["placement"].dropna().unique().tolist())
+        selected_placements = st.multiselect(
+            "Placement",
+            options=placement_opts,
+            default=placement_opts,
         )
+        if "All" in selected_placements:
+            selected_placements = None
 
-    selected_campaign_types = None
-    if "campaign_type" in df.columns:
-        all_campaign_types = sorted(
-            [t for t in df["campaign_type"].dropna().unique().tolist()]
-        )
-        if all_campaign_types:
-            selected_campaign_types = st.sidebar.multiselect(
-                "Campaign Objective",
-                options=all_campaign_types,
-                default=all_campaign_types,
-                help="Derived from creative names (Awareness, Traffic, Conversion, Other).",
-            )
-
-    selected_placements = None
-    if 'placement' in df.columns:
-        all_placements = sorted([p for p in df['placement'].dropna().unique().tolist()])
-        if all_placements:
-            selected_placements = st.sidebar.multiselect(
-                "Placement",
-                options=all_placements,
-                default=all_placements
-            )
-
-    selected_topics = None
-    if 'topic' in df.columns:
-        all_topics = sorted([t for t in df['topic'].dropna().unique().tolist()])
-        if len(all_topics) > 0:
-            selected_topics = st.sidebar.multiselect(
-                "Topic",
-                options=all_topics,
-                default=all_topics
-            )
-        else:
-            st.sidebar.info("ℹ️ No topics found in data. Add a 'topic' column to enable topic filtering.")
 
     min_impressions = st.sidebar.slider(
         "Min Impressions per Creative",

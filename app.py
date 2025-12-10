@@ -1164,8 +1164,8 @@ def main():
                 padding-top: 0rem !important;
             }
             .sidebar-logo {
-                margin-top: -15px !important;
-                margin-bottom: -15px !important;
+                margin-top: 0px !important;
+                margin-bottom: 0px !important;
             }
             </style>
         """, unsafe_allow_html=True)

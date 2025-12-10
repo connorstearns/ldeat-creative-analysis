@@ -1164,7 +1164,7 @@ def main():
             <style>
             /* reduce top/bottom padding inside sidebar content */
             section[data-testid="stSidebar"] .block-container {
-                padding-top: 0.25rem !important;
+                padding-top: 0rem !important;
                 padding-bottom: 0.5rem !important;
             }
     

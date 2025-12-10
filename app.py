@@ -1565,7 +1565,6 @@ def main():
         'objective_type': selected_objective_type,
         'campaign_types': selected_campaign_types if selected_campaign_types else None,  # NEW
         'topics': selected_topics if selected_topics else None,
-        'formats': selected_formats if selected_formats else None,
         'placements': selected_placements if selected_placements else None, 
         'min_impressions': min_impressions,
         'min_conversions': min_conversions

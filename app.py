@@ -1058,6 +1058,30 @@ def compute_platform_metrics_lazy_dog(df: pd.DataFrame, avg_res_check: float = 6
 
     return plat
 
+
+def build_period_order_map(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build a canonical period ordering map from the dataset.
+    Returns a DataFrame with (fiscal_year, period, period_label, period_index, period_start, period_end).
+    Sorted chronologically by actual dates.
+    """
+    if df.empty or "date" not in df.columns or "fiscal_year" not in df.columns or "period" not in df.columns:
+        return pd.DataFrame()
+    
+    period_map = (
+        df.groupby(["fiscal_year", "period"])["date"]
+        .agg(["min", "max"])
+        .reset_index()
+        .rename(columns={"min": "period_start", "max": "period_end"})
+    )
+    
+    period_map = period_map.sort_values("period_start").reset_index(drop=True)
+    period_map["period_index"] = range(len(period_map))
+    period_map["period_label"] = "P" + period_map["period"].astype(str) + " " + period_map["fiscal_year"].astype(str)
+    
+    return period_map
+
+
 def calculate_channel_roas(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate channel-specific ROAS based on available revenue streams.
@@ -1074,6 +1098,9 @@ def calculate_channel_roas(df: pd.DataFrame) -> pd.DataFrame:
         "spend": "sum",
     }
     
+    if "date" in df.columns:
+        agg_cols["date"] = "min"
+    
     if "online_order_revenue" in df.columns:
         agg_cols["online_order_revenue"] = "sum"
     if "store_sales" in df.columns:
@@ -1082,6 +1109,9 @@ def calculate_channel_roas(df: pd.DataFrame) -> pd.DataFrame:
         agg_cols["reservation_revenue"] = "sum"
     
     grouped = df.groupby([channel_col, "period", "fiscal_year"], as_index=False).agg(agg_cols)
+    
+    if "date" in grouped.columns:
+        grouped = grouped.rename(columns={"date": "period_start_date"})
     
     grouped["online_order_revenue"] = grouped.get("online_order_revenue", 0)
     grouped["store_sales"] = grouped.get("store_sales", 0)
@@ -1116,11 +1146,15 @@ def calculate_channel_roas(df: pd.DataFrame) -> pd.DataFrame:
     return grouped
 
 
-def render_channel_roas_tab(df: pd.DataFrame):
+def render_channel_roas_tab(df: pd.DataFrame, period_order_map: pd.DataFrame):
     """
     Render the Channel ROAS tab with:
     1. Line chart showing ROAS by channel over periods
     2. Bar chart showing Y/Y ROAS change (FY25 - FY24)
+    
+    Args:
+        df: Filtered dataframe for analysis
+        period_order_map: Canonical period ordering from build_period_order_map()
     """
     st.header("📈 Channel ROAS Analysis")
     
@@ -1148,18 +1182,15 @@ def render_channel_roas_tab(df: pd.DataFrame):
     st.subheader("ROAS by Channel Over Time")
     st.caption("Each line represents a channel's ROAS trend across fiscal periods.")
     
-    period_order = (
-        roas_df.groupby("period")
-        .agg({"fiscal_year": "first"})
-        .reset_index()
-    )
-    period_order["sort_key"] = period_order["fiscal_year"].astype(str) + "_" + period_order["period"].astype(str).str.zfill(2)
-    period_order = period_order.sort_values("sort_key")["period"].tolist()
-    
-    roas_df["period_cat"] = pd.Categorical(roas_df["period"], categories=period_order, ordered=True)
-    roas_df = roas_df.sort_values(["period_cat", "channel"])
-    
     roas_df["period_label"] = "P" + roas_df["period"].astype(str) + " " + roas_df["fiscal_year"].astype(str)
+    
+    if not period_order_map.empty:
+        period_labels_ordered = period_order_map["period_label"].tolist()
+        roas_df = roas_df[roas_df["period_label"].isin(period_labels_ordered)]
+        roas_df["period_label"] = pd.Categorical(roas_df["period_label"], categories=period_labels_ordered, ordered=True)
+        roas_df = roas_df.sort_values(["period_label", "channel"])
+    else:
+        roas_df = roas_df.sort_values(["fiscal_year", "period", "channel"])
     
     fig_line = px.line(
         roas_df,
@@ -1181,9 +1212,33 @@ def render_channel_roas_tab(df: pd.DataFrame):
     
     st.markdown("---")
     st.subheader("Year-over-Year ROAS Change by Channel")
-    st.caption("Comparison of total ROAS between fiscal years (FY25 - FY24). Positive = improvement.")
+    st.caption("Comparison of total ROAS between fiscal years. Positive = improvement. Use the period filter for 13-month comparisons.")
+    
+    if not period_order_map.empty:
+        all_period_labels = period_order_map["period_label"].tolist()
+        default_periods = all_period_labels[-13:] if len(all_period_labels) >= 13 else all_period_labels
+    else:
+        all_period_labels = []
+        default_periods = []
+    
+    st.caption("Select periods to include in the Y/Y comparison (ordered chronologically):")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        selected_period_labels = st.multiselect(
+            "Period Selection",
+            options=all_period_labels,
+            default=default_periods,
+            help="Select specific periods to compare. Default shows last 13 periods.",
+            label_visibility="collapsed"
+        )
+    with col2:
+        if st.button("All Periods", help="Select all available periods"):
+            selected_period_labels = all_period_labels
     
     fy_roas = df.copy()
+    if selected_period_labels and not period_order_map.empty:
+        selected_fy_periods = period_order_map[period_order_map["period_label"].isin(selected_period_labels)][["fiscal_year", "period"]]
+        fy_roas = fy_roas.merge(selected_fy_periods, on=["fiscal_year", "period"], how="inner")
     channel_col = "platform"
     
     agg_cols = {"spend": "sum"}
@@ -1292,7 +1347,6 @@ def render_channel_roas_tab(df: pd.DataFrame):
             )
             fig_bar_single.update_yaxes(tickformat=".2f")
             st.plotly_chart(fig_bar_single, use_container_width=True)
-
 
 
 def render_campaign_overview_tab(filtered_df: pd.DataFrame, campaign_plan_df: pd.DataFrame | None = None):
@@ -1911,6 +1965,7 @@ def main():
             "This Period",
             "Last Period",
             "This Fiscal Year",
+            "Last Fiscal Year",
         ],
         index=0,
         help="Use quick filters based on Week Start / Period / Fiscal Year, or choose a custom range.",
@@ -1958,26 +2013,24 @@ def main():
                 f"({start_date.date()} – {end_date.date()})"
             )
     
-    # ---- Last Period (within current fiscal year) ----
-    elif (
-        quick_choice == "Last Period"
-        and df_fy is not None
-        and current_period is not None
-        and period_order
-        and current_period in period_order
-    ):
-        idx = period_order.index(current_period)
-        if idx > 0:  # there *is* a previous period in this FY
-            last_period = period_order[idx - 1]
-            last_period_mask = (df["fiscal_year"] == current_fy) & (df["period"] == last_period)
-            last_period_dates = df.loc[last_period_mask, "date"]
-            if not last_period_dates.empty:
-                start_date = last_period_dates.min()
-                end_date = last_period_dates.max()
-                st.sidebar.info(
-                    f"Using Last Period {last_period} in {current_fy} "
-                    f"({start_date.date()} – {end_date.date()})"
-                )
+    # ---- Last Period (the completed period immediately before the current one) ----
+    elif quick_choice == "Last Period" and "period" in df.columns and "fiscal_year" in df.columns:
+        period_map = build_period_order_map(df)
+        
+        if len(period_map) >= 2:
+            last_period_row = period_map.iloc[-2]
+            last_fy = last_period_row["fiscal_year"]
+            last_period = last_period_row["period"]
+            start_date = last_period_row["period_start"]
+            end_date = last_period_row["period_end"]
+            st.sidebar.info(
+                f"Using Last Period P{last_period} in {last_fy} "
+                f"({start_date.date()} – {end_date.date()})"
+            )
+        elif len(period_map) == 1:
+            st.sidebar.warning("Only one period available in data. Showing all data.")
+        else:
+            st.sidebar.warning("No period data available.")
     
     # ---- This Fiscal Year ----
     elif quick_choice == "This Fiscal Year" and df_fy is not None and not df_fy.empty:
@@ -1988,6 +2041,23 @@ def main():
             f"Using Fiscal Year {current_fy} "
             f"({start_date.date()} – {end_date.date()})"
         )
+    
+    # ---- Last Fiscal Year ----
+    elif quick_choice == "Last Fiscal Year" and "fiscal_year" in df.columns:
+        all_fys = sorted(df["fiscal_year"].dropna().unique().tolist())
+        if len(all_fys) >= 2:
+            last_fy = all_fys[-2]
+            df_last_fy = df_sorted[df_sorted["fiscal_year"] == last_fy]
+            if not df_last_fy.empty:
+                fy_dates = df_last_fy["date"]
+                start_date = fy_dates.min()
+                end_date = fy_dates.max()
+                st.sidebar.info(
+                    f"Using Last Fiscal Year {last_fy} "
+                    f"({start_date.date()} – {end_date.date()})"
+                )
+        elif len(all_fys) == 1:
+            st.sidebar.warning("Only one fiscal year available in data. Showing all data.")
     
     # Fallback guards
     if pd.isna(start_date):
@@ -2161,6 +2231,8 @@ def main():
     }
 
     filtered_df = apply_global_filters(df, filters)
+    
+    period_order_map = build_period_order_map(df)
 
     if len(filtered_df) == 0:
         st.warning("⚠️ No data matches the current filters. Please adjust your filter settings.")
@@ -3293,7 +3365,7 @@ def main():
 
     # ---------- CHANNEL ROAS TAB ----------
     with tab6:
-        render_channel_roas_tab(filtered_df)
+        render_channel_roas_tab(filtered_df, period_order_map)
 
 
 if __name__ == "__main__":

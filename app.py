@@ -1058,6 +1058,243 @@ def compute_platform_metrics_lazy_dog(df: pd.DataFrame, avg_res_check: float = 6
 
     return plat
 
+def calculate_channel_roas(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate channel-specific ROAS based on available revenue streams.
+    
+    Revenue logic by channel:
+    - Google: Online Order Revenue + Store Visit Revenue + Reservations Revenue
+    - Meta: Online Order Revenue + Reservations Revenue
+    - TikTok: Online Order Revenue
+    - Programmatic: Online Order Revenue
+    """
+    channel_col = "platform" if "platform" in df.columns else "Channel"
+    
+    agg_cols = {
+        "spend": "sum",
+    }
+    
+    if "online_order_revenue" in df.columns:
+        agg_cols["online_order_revenue"] = "sum"
+    if "store_sales" in df.columns:
+        agg_cols["store_sales"] = "sum"
+    if "reservation_revenue" in df.columns:
+        agg_cols["reservation_revenue"] = "sum"
+    
+    grouped = df.groupby([channel_col, "period", "fiscal_year"], as_index=False).agg(agg_cols)
+    
+    grouped["online_order_revenue"] = grouped.get("online_order_revenue", 0)
+    grouped["store_sales"] = grouped.get("store_sales", 0)
+    grouped["reservation_revenue"] = grouped.get("reservation_revenue", 0)
+    
+    def calc_total_revenue(row):
+        channel = row[channel_col].lower() if isinstance(row[channel_col], str) else ""
+        oo_rev = row.get("online_order_revenue", 0) or 0
+        store_rev = row.get("store_sales", 0) or 0
+        res_rev = row.get("reservation_revenue", 0) or 0
+        
+        if "google" in channel:
+            return oo_rev + store_rev + res_rev
+        elif "meta" in channel:
+            return oo_rev + res_rev
+        elif "tiktok" in channel:
+            return oo_rev
+        elif "programmatic" in channel:
+            return oo_rev
+        else:
+            return oo_rev + store_rev + res_rev
+    
+    grouped["total_revenue"] = grouped.apply(calc_total_revenue, axis=1)
+    grouped["ROAS"] = np.where(
+        grouped["spend"] > 0,
+        grouped["total_revenue"] / grouped["spend"],
+        0
+    )
+    
+    grouped = grouped.rename(columns={channel_col: "channel"})
+    
+    return grouped
+
+
+def render_channel_roas_tab(df: pd.DataFrame):
+    """
+    Render the Channel ROAS tab with:
+    1. Line chart showing ROAS by channel over periods
+    2. Bar chart showing Y/Y ROAS change (FY25 - FY24)
+    """
+    st.header("📈 Channel ROAS Analysis")
+    
+    st.caption(
+        "Track return on ad spend by channel over time. "
+        "ROAS is calculated using channel-specific revenue streams."
+    )
+    
+    if df.empty:
+        st.info("No data available for the current filter selection.")
+        return
+    
+    required_cols = ["platform", "period", "fiscal_year", "spend"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"Missing required columns: {', '.join(missing)}")
+        return
+    
+    roas_df = calculate_channel_roas(df)
+    
+    if roas_df.empty:
+        st.warning("No ROAS data available after calculation.")
+        return
+    
+    st.subheader("ROAS by Channel Over Time")
+    st.caption("Each line represents a channel's ROAS trend across fiscal periods.")
+    
+    period_order = (
+        roas_df.groupby("period")
+        .agg({"fiscal_year": "first"})
+        .reset_index()
+    )
+    period_order["sort_key"] = period_order["fiscal_year"].astype(str) + "_" + period_order["period"].astype(str).str.zfill(2)
+    period_order = period_order.sort_values("sort_key")["period"].tolist()
+    
+    roas_df["period_cat"] = pd.Categorical(roas_df["period"], categories=period_order, ordered=True)
+    roas_df = roas_df.sort_values(["period_cat", "channel"])
+    
+    roas_df["period_label"] = "P" + roas_df["period"].astype(str) + " " + roas_df["fiscal_year"].astype(str)
+    
+    fig_line = px.line(
+        roas_df,
+        x="period_label",
+        y="ROAS",
+        color="channel",
+        markers=True,
+        title="Channel ROAS by Period",
+        labels={"period_label": "Period", "ROAS": "ROAS", "channel": "Channel"}
+    )
+    fig_line.update_layout(
+        xaxis_title="Period",
+        yaxis_title="ROAS",
+        legend_title="Channel",
+        hovermode="x unified"
+    )
+    fig_line.update_yaxes(tickformat=".2f")
+    st.plotly_chart(fig_line, use_container_width=True)
+    
+    st.markdown("---")
+    st.subheader("Year-over-Year ROAS Change by Channel")
+    st.caption("Comparison of total ROAS between fiscal years (FY25 - FY24). Positive = improvement.")
+    
+    fy_roas = df.copy()
+    channel_col = "platform"
+    
+    agg_cols = {"spend": "sum"}
+    if "online_order_revenue" in fy_roas.columns:
+        agg_cols["online_order_revenue"] = "sum"
+    if "store_sales" in fy_roas.columns:
+        agg_cols["store_sales"] = "sum"
+    if "reservation_revenue" in fy_roas.columns:
+        agg_cols["reservation_revenue"] = "sum"
+    
+    fy_grouped = fy_roas.groupby([channel_col, "fiscal_year"], as_index=False).agg(agg_cols)
+    
+    fy_grouped["online_order_revenue"] = fy_grouped.get("online_order_revenue", 0)
+    fy_grouped["store_sales"] = fy_grouped.get("store_sales", 0)
+    fy_grouped["reservation_revenue"] = fy_grouped.get("reservation_revenue", 0)
+    
+    def calc_total_revenue_fy(row):
+        channel = row[channel_col].lower() if isinstance(row[channel_col], str) else ""
+        oo_rev = row.get("online_order_revenue", 0) or 0
+        store_rev = row.get("store_sales", 0) or 0
+        res_rev = row.get("reservation_revenue", 0) or 0
+        
+        if "google" in channel:
+            return oo_rev + store_rev + res_rev
+        elif "meta" in channel:
+            return oo_rev + res_rev
+        elif "tiktok" in channel:
+            return oo_rev
+        elif "programmatic" in channel:
+            return oo_rev
+        else:
+            return oo_rev + store_rev + res_rev
+    
+    fy_grouped["total_revenue"] = fy_grouped.apply(calc_total_revenue_fy, axis=1)
+    fy_grouped["ROAS"] = np.where(
+        fy_grouped["spend"] > 0,
+        fy_grouped["total_revenue"] / fy_grouped["spend"],
+        0
+    )
+    
+    pivot_roas = fy_grouped.pivot_table(
+        index=channel_col,
+        columns="fiscal_year",
+        values="ROAS",
+        aggfunc="first"
+    ).reset_index()
+    
+    fy_cols = [c for c in pivot_roas.columns if c != channel_col]
+    fy_cols_sorted = sorted(fy_cols, key=lambda x: str(x))
+    
+    if len(fy_cols_sorted) >= 2:
+        fy_prev = fy_cols_sorted[-2]
+        fy_curr = fy_cols_sorted[-1]
+        
+        pivot_roas["ROAS_Change"] = pivot_roas[fy_curr].fillna(0) - pivot_roas[fy_prev].fillna(0)
+        pivot_roas["color"] = pivot_roas["ROAS_Change"].apply(lambda x: "Improvement" if x >= 0 else "Decline")
+        
+        fig_bar = px.bar(
+            pivot_roas,
+            x=channel_col,
+            y="ROAS_Change",
+            color="color",
+            color_discrete_map={"Improvement": "#2ecc71", "Decline": "#e74c3c"},
+            title=f"ROAS Change: {fy_curr} vs {fy_prev}",
+            labels={channel_col: "Channel", "ROAS_Change": "ROAS Change", "color": ""}
+        )
+        fig_bar.update_layout(
+            xaxis_title="Channel",
+            yaxis_title="ROAS Change (Y/Y)",
+            showlegend=True
+        )
+        fig_bar.update_yaxes(tickformat=".2f")
+        st.plotly_chart(fig_bar, use_container_width=True)
+        
+        st.markdown("**Summary Table**")
+        summary_df = pivot_roas[[channel_col, fy_prev, fy_curr, "ROAS_Change"]].copy()
+        summary_df.columns = ["Channel", f"ROAS {fy_prev}", f"ROAS {fy_curr}", "Change"]
+        summary_df = summary_df.sort_values("Change", ascending=False)
+        
+        st.dataframe(
+            summary_df.style.format({
+                f"ROAS {fy_prev}": "{:.2f}x",
+                f"ROAS {fy_curr}": "{:.2f}x",
+                "Change": "{:+.2f}x"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("Need data from at least 2 fiscal years to show year-over-year comparison.")
+        
+        if len(fy_cols_sorted) == 1:
+            fy_single = fy_cols_sorted[0]
+            st.markdown(f"**{fy_single} ROAS by Channel**")
+            single_df = pivot_roas[[channel_col, fy_single]].copy()
+            single_df.columns = ["Channel", "ROAS"]
+            single_df = single_df.sort_values("ROAS", ascending=False)
+            
+            fig_bar_single = px.bar(
+                single_df,
+                x="Channel",
+                y="ROAS",
+                title=f"ROAS by Channel ({fy_single})",
+                color="ROAS",
+                color_continuous_scale="Viridis"
+            )
+            fig_bar_single.update_yaxes(tickformat=".2f")
+            st.plotly_chart(fig_bar_single, use_container_width=True)
+
+
+
 def render_campaign_overview_tab(filtered_df: pd.DataFrame, campaign_plan_df: pd.DataFrame | None = None):
     """
     New tab:
@@ -1934,12 +2171,13 @@ def main():
     # Load campaign plan after we know filters & df are good
     campaign_plan_df = load_campaign_plan_df()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📌 Executive Summary",
         "🟦 Platform Comparison",
         "📊 Campaign Overview",
         "📉 Creative Detail & Fatigue",
         "🏷️ Topic Insights"
+        "📈 Channel ROAS"
     ])
 
     # ---------- UPDATED EXEC SUMMARY TAB ----------
@@ -3052,6 +3290,10 @@ def main():
                 st.markdown("**Summary:**")
                 for insight in insights:
                     st.markdown(insight)
+
+    # ---------- CHANNEL ROAS TAB ----------
+    with tab6:
+        render_channel_roas_tab(filtered_df)
 
 
 if __name__ == "__main__":

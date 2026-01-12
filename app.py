@@ -2176,7 +2176,7 @@ def main():
         "🟦 Platform Comparison",
         "📊 Campaign Overview",
         "📉 Creative Detail & Fatigue",
-        "🏷️ Topic Insights"
+        "🏷️ Topic Insights",
         "📈 Channel ROAS"
     ])
 
